@@ -644,16 +644,12 @@ function lookupItem(itemId) {
     "✅ Đã add <b>"
     + escapeHtml(item.itemId)
     + "</b> vào đơn hàng"
-    + "<br>"
-    + escapeHtml(
-        item.productName
-      )
-    + " · "
-    + money(
-        item.price
-      )
   );
 
+  // Thông báo add chỉ hiện trong 2 giây
+  setTimeout(function() {
+    clearMessage();
+  }, 2000);
 
   successFeedback();
 }
