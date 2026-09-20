@@ -192,10 +192,15 @@ input {
 
 <div class="card">
 
+  <div id="inventoryStatus" class="message loading">
+    ⏳ Đang tải inventory...
+  </div>
+
   <button
     id="scanBtn"
     class="primary"
     onclick="startScanner()"
+    disabled
   >
     📷 SCAN QR
   </button>
@@ -215,51 +220,19 @@ input {
     <input
       id="manualId"
       placeholder="Nhập ITEM ID để test"
+      disabled
     >
 
     <button
+      id="manualBtn"
       class="secondary"
       onclick="manualLookup()"
+      disabled
     >
       Tìm item
     </button>
 
   </div>
-
-</div>
-
-
-<div
-  id="itemCard"
-  class="card hidden"
->
-
-  <div
-    id="productName"
-    class="product-name"
-  ></div>
-
-  <div
-    id="itemId"
-    class="meta"
-  ></div>
-
-  <div
-    id="sku"
-    class="meta"
-  ></div>
-
-  <div
-    id="price"
-    class="price"
-  ></div>
-
-  <button
-    class="primary"
-    onclick="addCurrentItem()"
-  >
-    + THÊM VÀO ĐƠN
-  </button>
 
 </div>
 
@@ -324,14 +297,17 @@ const API_URL =
 
 let inventory = {};
 let inventoryLoaded = false;
+
 let scanner = null;
 let scannerRunning = false;
-
-let currentItem = null;
 
 let cart = [];
 
 let lookupBusy = false;
+
+// tránh cùng một QR bị đọc liên tục
+let lastScannedId = null;
+let lastScannedAt = 0;
 
 
 /**********************************************
@@ -441,31 +417,67 @@ async function stopScanner() {
  * QR SUCCESS
  **********************************************/
 
-function onScanSuccess(
-  decodedText
-) {
+function onScanSuccess(decodedText) {
 
-  if (lookupBusy) {
+  if (
+    lookupBusy ||
+    !inventoryLoaded
+  ) {
     return;
   }
 
-  lookupBusy = true;
 
-  const id =
+  const itemId =
     extractItemId(
       decodedText
     );
 
-  navigator.vibrate?.(80);
 
-  lookupItem(id);
+  const now =
+    Date.now();
 
-  setTimeout(() => {
 
-    lookupBusy = false;
+  /*
+   * Nếu vẫn đang dí camera vào
+   * cùng một QR thì bỏ qua.
+   *
+   * Sau 3 giây mới cho scan
+   * lại cùng ID.
+   */
+  if (
+    itemId === lastScannedId &&
+    now - lastScannedAt < 3000
+  ) {
+    return;
+  }
 
-  }, 1200);
 
+  lastScannedId =
+    itemId;
+
+  lastScannedAt =
+    now;
+
+
+  lookupBusy = true;
+
+  lookupItem(
+    itemId
+  );
+
+
+  /*
+   * Unlock nhanh để scan
+   * món tiếp theo.
+   */
+  setTimeout(
+    function() {
+
+      lookupBusy = false;
+
+    },
+    500
+  );
 }
 
 
@@ -510,12 +522,13 @@ function extractItemId(value) {
 
 function manualLookup() {
 
+  const input =
+    document.getElementById(
+      "manualId"
+    );
+
   const id =
-    document
-      .getElementById(
-        "manualId"
-      )
-      .value
+    input.value
       .trim();
 
   if (!id) {
@@ -525,13 +538,13 @@ function manualLookup() {
     );
 
     return;
-
   }
+
 
   lookupItem(id);
 
+  input.value = "";
 }
-
 
 /**********************************************
  * GET ITEM
@@ -539,6 +552,35 @@ function manualLookup() {
  * JSONP avoids browser CORS problem
  **********************************************/
 
+function successFeedback() {
+
+  if (
+    navigator.vibrate
+  ) {
+
+    navigator.vibrate(
+      80
+    );
+
+  }
+
+}
+
+
+function errorFeedback() {
+
+  if (
+    navigator.vibrate
+  ) {
+
+    navigator.vibrate(
+      [100, 60, 100]
+    );
+
+  }
+
+}
+  
 function lookupItem(itemId) {
 
   clearMessage();
@@ -566,10 +608,12 @@ function lookupItem(itemId) {
   if (!item) {
 
     showError(
-      "Không tìm thấy item "
+      "❌ Không tìm thấy "
       + itemId
       + " hoặc item đã SOLD."
     );
+
+    errorFeedback();
 
     return;
   }
@@ -583,17 +627,44 @@ function lookupItem(itemId) {
   ) {
 
     showError(
-      "Item đã có trong giỏ."
+      "⚠️ "
+      + itemId
+      + " đã có trong đơn hàng."
     );
+
+    errorFeedback();
 
     return;
   }
 
 
-  currentItem = item;
+  /*
+   * AUTO ADD
+   */
+  cart.push({
+    ...item
+  });
 
-  showItem(item);
 
+  renderCart();
+
+
+  showSuccess(
+    "✅ Đã add <b>"
+    + escapeHtml(item.itemId)
+    + "</b> vào đơn hàng"
+    + "<br>"
+    + escapeHtml(
+        item.productName
+      )
+    + " · "
+    + money(
+        item.price
+      )
+  );
+
+
+  successFeedback();
 }
 
 /**********************************************
@@ -1096,21 +1167,47 @@ function verifyCheckout(ids) {
         ) {
 
           if (allSold) {
-
+          
+            /*
+             * Xóa item vừa SOLD khỏi
+             * local inventory
+             */
+            ids.forEach(
+              id => {
+                delete inventory[id];
+              }
+            );
+          
+          
             cart = [];
-
-            currentItem = null;
-
+          
             renderCart();
-
+          
+          
             showSuccess(
               "✅ Thanh toán thành công"
             );
-
-            navigator.vibrate?.(
-              [80,80,120]
-            );
-
+          
+          
+            /*
+             * Update inventory counter
+             */
+            const count =
+              Object.keys(
+                inventory
+              ).length;
+          
+            document
+              .getElementById(
+                "inventoryStatus"
+              )
+              .innerHTML =
+                "✅ Sẵn sàng · "
+                + count
+                + " item đang có hàng";
+          
+          
+            successFeedback();
           } else {
 
             showError(
@@ -1210,9 +1307,17 @@ function showLoading(text) {
 
 function loadInventory() {
 
-  showLoading(
-    "Đang tải dữ liệu sản phẩm..."
-  );
+  const status =
+    document.getElementById(
+      "inventoryStatus"
+    );
+
+  status.className =
+    "message loading";
+
+  status.innerHTML =
+    "⏳ Đang tải inventory...";
+
 
   jsonpRequest(
     {
@@ -1223,25 +1328,55 @@ function loadInventory() {
 
       if (!result.success) {
 
-        showError(
-          "Không tải được inventory."
-        );
+        status.className =
+          "message error";
+
+        status.innerHTML =
+          "❌ Không tải được inventory";
 
         return;
       }
 
+
       inventory =
-        result.inventory;
+        result.inventory || {};
 
       inventoryLoaded = true;
 
-      clearMessage();
 
-      console.log(
-        "Loaded",
-        Object.keys(inventory).length,
-        "items"
-      );
+      const count =
+        Object.keys(
+          inventory
+        ).length;
+
+
+      status.className =
+        "message success";
+
+      status.innerHTML =
+        "✅ Sẵn sàng · "
+        + count
+        + " item đang có hàng";
+
+
+      // Enable POS
+      document
+        .getElementById(
+          "scanBtn"
+        )
+        .disabled = false;
+
+      document
+        .getElementById(
+          "manualId"
+        )
+        .disabled = false;
+
+      document
+        .getElementById(
+          "manualBtn"
+        )
+        .disabled = false;
 
     }
   );
