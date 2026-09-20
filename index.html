@@ -426,16 +426,13 @@ function onScanSuccess(decodedText) {
     return;
   }
 
-
   const itemId =
     extractItemId(
       decodedText
     );
 
-
   const now =
     Date.now();
-
 
   /*
    * Nếu vẫn đang dí camera vào
@@ -451,33 +448,27 @@ function onScanSuccess(decodedText) {
     return;
   }
 
-
-  lastScannedId =
-    itemId;
-
-  lastScannedAt =
-    now;
-
-
+  lastScannedId = itemId;
+  lastScannedAt = now;
   lookupBusy = true;
 
-  lookupItem(
-    itemId
-  );
-
-
-  /*
-   * Unlock nhanh để scan
-   * món tiếp theo.
-   */
-  setTimeout(
-    function() {
-
+  try {
+    lookupItem(itemId);
+  } catch (err) {
+    console.error(err);
+    showError(
+      "Lỗi khi xử lý QR: " +
+      (err?.message || err)
+    );
+  } finally {
+    /*
+     * Luôn mở khóa scanner, kể cả khi
+     * lookupItem gặp lỗi JavaScript.
+     */
+    setTimeout(function() {
       lookupBusy = false;
-
-    },
-    500
-  );
+    }, 500);
+  }
 }
 
 
@@ -737,117 +728,6 @@ function jsonpRequest(
 
   document.body
     .appendChild(script);
-
-}
-
-
-/**********************************************
- * SHOW ITEM
- **********************************************/
-
-function showItem(item) {
-
-  document
-    .getElementById(
-      "productName"
-    )
-    .textContent =
-      item.productName ||
-      "Không có tên";
-
-
-  document
-    .getElementById(
-      "itemId"
-    )
-    .textContent =
-      "Item: "
-      + item.itemId;
-
-
-  document
-    .getElementById(
-      "sku"
-    )
-    .textContent =
-      "SKU: "
-      + item.sku;
-
-
-  document
-    .getElementById(
-      "price"
-    )
-    .textContent =
-      money(item.price);
-
-
-  document
-    .getElementById(
-      "itemCard"
-    )
-    .classList
-    .remove("hidden");
-
-}
-
-
-/**********************************************
- * ADD CART
- **********************************************/
-
-function addCurrentItem() {
-
-  if (!currentItem) {
-    return;
-  }
-
-
-  if (
-    cart.some(
-      x =>
-        x.itemId ===
-        currentItem.itemId
-    )
-  ) {
-
-    showError(
-      "Item đã có trong giỏ."
-    );
-
-    return;
-
-  }
-
-
-  cart.push({
-    ...currentItem
-  });
-
-
-  currentItem = null;
-
-
-  document
-    .getElementById(
-      "itemCard"
-    )
-    .classList
-    .add("hidden");
-
-
-  document
-    .getElementById(
-      "manualId"
-    )
-    .value = "";
-
-
-  renderCart();
-
-  showSuccess(
-    "✓ Đã thêm vào đơn"
-  );
 
 }
 
@@ -1253,6 +1133,17 @@ function money(value) {
 }
 
 
+function escapeHtml(value) {
+
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+
 function clearMessage() {
 
   document
@@ -1312,6 +1203,8 @@ function loadInventory() {
       "inventoryStatus"
     );
 
+  status.style.display = "block";
+
   status.className =
     "message loading";
 
@@ -1357,6 +1250,13 @@ function loadInventory() {
         "✅ Sẵn sàng · "
         + count
         + " item đang có hàng";
+
+      // Tự ẩn thông báo sẵn sàng sau 5 giây
+      setTimeout(function() {
+        if (inventoryLoaded) {
+          status.style.display = "none";
+        }
+      }, 5000);
 
 
       // Enable POS
