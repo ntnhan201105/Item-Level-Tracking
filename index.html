@@ -322,7 +322,8 @@ input {
 const API_URL =
   "https://script.google.com/macros/s/AKfycbxWvrc0q35nRPDXWU6gAodYC-SmwYsEeAhu-N3xFCFFNBpdpuEvK1_MEDcaH_hFhKE1cQ/exec";
 
-
+let inventory = {};
+let inventoryLoaded = false;
 let scanner = null;
 let scannerRunning = false;
 
@@ -542,78 +543,58 @@ function lookupItem(itemId) {
 
   clearMessage();
 
-  showLoading(
-    "Đang tìm "
-    + itemId
-  );
-
-  jsonpRequest(
-    {
-      action: "getItem",
-      itemId: itemId
-    },
-
-    function(result) {
-
-      clearMessage();
-
-      if (!result.success) {
-
-        showError(
-          result.message
-        );
-
-        return;
-
-      }
+  itemId =
+    String(itemId)
+      .trim()
+      .toUpperCase();
 
 
-      const item =
-        result.item;
+  if (!inventoryLoaded) {
+
+    showError(
+      "Inventory chưa tải xong."
+    );
+
+    return;
+  }
 
 
-      if (
-        cart.some(
-          x =>
-            x.itemId ===
-            item.itemId
-        )
-      ) {
-
-        showError(
-          "Item đã có trong giỏ."
-        );
-
-        return;
-
-      }
+  const item =
+    inventory[itemId];
 
 
-      if (
-        item.status !==
-        "IN_STOCK"
-      ) {
+  if (!item) {
 
-        showError(
-          item.itemId
-          + " hiện đang "
-          + item.status
-        );
+    showError(
+      "Không tìm thấy item "
+      + itemId
+      + " hoặc item đã SOLD."
+    );
 
-        return;
-
-      }
+    return;
+  }
 
 
-      currentItem = item;
+  if (
+    cart.some(
+      x =>
+        x.itemId === itemId
+    )
+  ) {
 
-      showItem(item);
+    showError(
+      "Item đã có trong giỏ."
+    );
 
-    }
-  );
+    return;
+  }
+
+
+  currentItem = item;
+
+  showItem(item);
 
 }
-
 
 /**********************************************
  * JSONP
@@ -1081,7 +1062,7 @@ function verifyCheckout(ids) {
 
   let allSold = true;
 
-
+  
   ids.forEach(id => {
 
     jsonpRequest(
@@ -1227,8 +1208,47 @@ function showLoading(text) {
 
 }
 
+function loadInventory() {
+
+  showLoading(
+    "Đang tải dữ liệu sản phẩm..."
+  );
+
+  jsonpRequest(
+    {
+      action: "getInventory"
+    },
+
+    function(result) {
+
+      if (!result.success) {
+
+        showError(
+          "Không tải được inventory."
+        );
+
+        return;
+      }
+
+      inventory =
+        result.inventory;
+
+      inventoryLoaded = true;
+
+      clearMessage();
+
+      console.log(
+        "Loaded",
+        Object.keys(inventory).length,
+        "items"
+      );
+
+    }
+  );
+}
 
 renderCart();
+loadInventory();
 
 </script>
 
