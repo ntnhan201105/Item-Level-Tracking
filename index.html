@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+>
+
+<title>Item POS</title>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system,
+               BlinkMacSystemFont,
+               "Segoe UI",
+               sans-serif;
+
+  background: #f4f4f4;
+  color: #1d1d1f;
+}
+
+main {
+  max-width: 520px;
+  margin: auto;
+  padding: 16px;
+}
+
+h1 {
+  text-align: center;
+  font-size: 27px;
+  margin: 8px 0 18px;
+}
+
+.card {
+  background: white;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+
+  box-shadow:
+    0 2px 10px
+    rgba(0,0,0,.06);
+}
+
+button {
+  border: 0;
+  border-radius: 12px;
+  width: 100%;
+  padding: 15px;
+  margin-top: 8px;
+
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.primary {
+  background: #111;
+  color: white;
+}
+
+.secondary {
+  background: #e5e5ea;
+}
+
+.cash {
+  background: #333;
+  color: white;
+}
+
+.transfer {
+  background: #1677ff;
+  color: white;
+}
+
+.danger {
+  color: #c62828;
+  cursor: pointer;
+}
+
+.hidden {
+  display: none;
+}
+
+#reader {
+  width: 100%;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+.product-name {
+  font-size: 23px;
+  font-weight: 700;
+}
+
+.meta {
+  color: #777;
+  font-size: 13px;
+  margin-top: 5px;
+}
+
+.price {
+  font-size: 23px;
+  font-weight: 700;
+  margin-top: 12px;
+}
+
+.cart-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+
+  padding: 12px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.cart-info {
+  flex: 1;
+}
+
+.cart-price {
+  font-weight: 700;
+}
+
+.total {
+  display: flex;
+  justify-content: space-between;
+
+  margin-top: 15px;
+
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.message {
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+}
+
+.error {
+  background: #ffebee;
+  color: #b71c1c;
+}
+
+.success {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.loading {
+  background: white;
+  color: #555;
+}
+
+input {
+  width: 100%;
+  padding: 14px;
+
+  border: 1px solid #ddd;
+  border-radius: 11px;
+
+  font-size: 16px;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<main>
+
+<h1>🛍️ Bán hàng</h1>
+
+
+<div id="message"></div>
+
+
+<div class="card">
+
+  <button
+    id="scanBtn"
+    class="primary"
+    onclick="startScanner()"
+  >
+    📷 SCAN QR
+  </button>
+
+  <button
+    id="stopBtn"
+    class="secondary hidden"
+    onclick="stopScanner()"
+  >
+    DỪNG CAMERA
+  </button>
+
+  <div id="reader"></div>
+
+  <div style="margin-top:16px">
+
+    <input
+      id="manualId"
+      placeholder="Nhập ITEM ID để test"
+    >
+
+    <button
+      class="secondary"
+      onclick="manualLookup()"
+    >
+      Tìm item
+    </button>
+
+  </div>
+
+</div>
+
+
+<div
+  id="itemCard"
+  class="card hidden"
+>
+
+  <div
+    id="productName"
+    class="product-name"
+  ></div>
+
+  <div
+    id="itemId"
+    class="meta"
+  ></div>
+
+  <div
+    id="sku"
+    class="meta"
+  ></div>
+
+  <div
+    id="price"
+    class="price"
+  ></div>
+
+  <button
+    class="primary"
+    onclick="addCurrentItem()"
+  >
+    + THÊM VÀO ĐƠN
+  </button>
+
+</div>
+
+
+<div class="card">
+
+  <h2>
+    Giỏ hàng
+    (<span id="count">0</span>)
+  </h2>
+
+  <div id="cart"></div>
+
+  <div class="total">
+
+    <span>Tổng</span>
+
+    <span id="total">
+      0 ₫
+    </span>
+
+  </div>
+
+</div>
+
+
+<div
+  id="payment"
+  class="card hidden"
+>
+
+  <h2>Thanh toán</h2>
+
+  <button
+    class="cash"
+    onclick="checkout('CASH')"
+  >
+    💵 TIỀN MẶT
+  </button>
+
+  <button
+    class="transfer"
+    onclick="checkout('TRANSFER')"
+  >
+    📱 CHUYỂN KHOẢN
+  </button>
+
+</div>
+
+
+</main>
+
+
+<script>
+
+/**********************************************
+ * PUT YOUR APPS SCRIPT URL HERE
+ **********************************************/
+
+const API_URL =
+  "https://script.google.com/macros/s/AKfycbxWvrc0q35nRPDXWU6gAodYC-SmwYsEeAhu-N3xFCFFNBpdpuEvK1_MEDcaH_hFhKE1cQ/exec";
+
+
+let scanner = null;
+let scannerRunning = false;
+
+let currentItem = null;
+
+let cart = [];
+
+let lookupBusy = false;
+
+
+/**********************************************
+ * START CAMERA
+ **********************************************/
+
+async function startScanner() {
+
+  clearMessage();
+
+  if (scannerRunning) {
+    return;
+  }
+
+  scanner =
+    new Html5Qrcode(
+      "reader"
+    );
+
+  try {
+
+    await scanner.start(
+
+      {
+        facingMode:
+          "environment"
+      },
+
+      {
+        fps: 10,
+
+        qrbox: {
+          width: 240,
+          height: 240
+        }
+      },
+
+      onScanSuccess
+
+    );
+
+    scannerRunning = true;
+
+    document
+      .getElementById("scanBtn")
+      .classList
+      .add("hidden");
+
+    document
+      .getElementById("stopBtn")
+      .classList
+      .remove("hidden");
+
+  } catch (err) {
+
+    showError(
+      "Không mở được camera: "
+      + err
+    );
+
+  }
+
+}
+
+
+/**********************************************
+ * STOP CAMERA
+ **********************************************/
+
+async function stopScanner() {
+
+  if (
+    !scanner ||
+    !scannerRunning
+  ) {
+    return;
+  }
+
+  try {
+
+    await scanner.stop();
+
+    scanner.clear();
+
+  } catch (e) {
+
+    console.log(e);
+
+  }
+
+  scannerRunning = false;
+
+  document
+    .getElementById("scanBtn")
+    .classList
+    .remove("hidden");
+
+  document
+    .getElementById("stopBtn")
+    .classList
+    .add("hidden");
+
+}
+
+
+/**********************************************
+ * QR SUCCESS
+ **********************************************/
+
+function onScanSuccess(
+  decodedText
+) {
+
+  if (lookupBusy) {
+    return;
+  }
+
+  lookupBusy = true;
+
+  const id =
+    extractItemId(
+      decodedText
+    );
+
+  navigator.vibrate?.(80);
+
+  lookupItem(id);
+
+  setTimeout(() => {
+
+    lookupBusy = false;
+
+  }, 1200);
+
+}
+
+
+/**********************************************
+ * QR CONTENT
+ **********************************************/
+
+function extractItemId(value) {
+
+  value =
+    String(value)
+      .trim();
+
+  try {
+
+    const url =
+      new URL(value);
+
+    const id =
+      url.searchParams
+        .get("item");
+
+    if (id) {
+
+      return id
+        .trim()
+        .toUpperCase();
+
+    }
+
+  } catch (e) {}
+
+  return value
+    .toUpperCase();
+
+}
+
+
+/**********************************************
+ * MANUAL TEST
+ **********************************************/
+
+function manualLookup() {
+
+  const id =
+    document
+      .getElementById(
+        "manualId"
+      )
+      .value
+      .trim();
+
+  if (!id) {
+
+    showError(
+      "Nhập ITEM ID."
+    );
+
+    return;
+
+  }
+
+  lookupItem(id);
+
+}
+
+
+/**********************************************
+ * GET ITEM
+ *
+ * JSONP avoids browser CORS problem
+ **********************************************/
+
+function lookupItem(itemId) {
+
+  clearMessage();
+
+  showLoading(
+    "Đang tìm "
+    + itemId
+  );
+
+  jsonpRequest(
+    {
+      action: "getItem",
+      itemId: itemId
+    },
+
+    function(result) {
+
+      clearMessage();
+
+      if (!result.success) {
+
+        showError(
+          result.message
+        );
+
+        return;
+
+      }
+
+
+      const item =
+        result.item;
+
+
+      if (
+        cart.some(
+          x =>
+            x.itemId ===
+            item.itemId
+        )
+      ) {
+
+        showError(
+          "Item đã có trong giỏ."
+        );
+
+        return;
+
+      }
+
+
+      if (
+        item.status !==
+        "IN_STOCK"
+      ) {
+
+        showError(
+          item.itemId
+          + " hiện đang "
+          + item.status
+        );
+
+        return;
+
+      }
+
+
+      currentItem = item;
+
+      showItem(item);
+
+    }
+  );
+
+}
+
+
+/**********************************************
+ * JSONP
+ **********************************************/
+
+function jsonpRequest(
+  params,
+  onSuccess
+) {
+
+  const callbackName =
+    "cb_"
+    + Date.now()
+    + "_"
+    + Math.floor(
+        Math.random() * 10000
+      );
+
+
+  window[callbackName] =
+    function(data) {
+
+      onSuccess(data);
+
+      delete
+        window[callbackName];
+
+      script.remove();
+
+    };
+
+
+  const query =
+    new URLSearchParams(
+      {
+        ...params,
+        callback:
+          callbackName
+      }
+    );
+
+
+  const script =
+    document.createElement(
+      "script"
+    );
+
+
+  script.src =
+    API_URL
+    + "?"
+    + query.toString();
+
+
+  script.onerror =
+    function() {
+
+      showError(
+        "Không kết nối được backend."
+      );
+
+      delete
+        window[callbackName];
+
+      script.remove();
+
+    };
+
+
+  document.body
+    .appendChild(script);
+
+}
+
+
+/**********************************************
+ * SHOW ITEM
+ **********************************************/
+
+function showItem(item) {
+
+  document
+    .getElementById(
+      "productName"
+    )
+    .textContent =
+      item.productName ||
+      "Không có tên";
+
+
+  document
+    .getElementById(
+      "itemId"
+    )
+    .textContent =
+      "Item: "
+      + item.itemId;
+
+
+  document
+    .getElementById(
+      "sku"
+    )
+    .textContent =
+      "SKU: "
+      + item.sku;
+
+
+  document
+    .getElementById(
+      "price"
+    )
+    .textContent =
+      money(item.price);
+
+
+  document
+    .getElementById(
+      "itemCard"
+    )
+    .classList
+    .remove("hidden");
+
+}
+
+
+/**********************************************
+ * ADD CART
+ **********************************************/
+
+function addCurrentItem() {
+
+  if (!currentItem) {
+    return;
+  }
+
+
+  if (
+    cart.some(
+      x =>
+        x.itemId ===
+        currentItem.itemId
+    )
+  ) {
+
+    showError(
+      "Item đã có trong giỏ."
+    );
+
+    return;
+
+  }
+
+
+  cart.push({
+    ...currentItem
+  });
+
+
+  currentItem = null;
+
+
+  document
+    .getElementById(
+      "itemCard"
+    )
+    .classList
+    .add("hidden");
+
+
+  document
+    .getElementById(
+      "manualId"
+    )
+    .value = "";
+
+
+  renderCart();
+
+  showSuccess(
+    "✓ Đã thêm vào đơn"
+  );
+
+}
+
+
+/**********************************************
+ * REMOVE
+ **********************************************/
+
+function removeItem(id) {
+
+  cart =
+    cart.filter(
+      x =>
+        x.itemId !== id
+    );
+
+  renderCart();
+
+}
+
+
+/**********************************************
+ * CART UI
+ **********************************************/
+
+function renderCart() {
+
+  const el =
+    document
+      .getElementById(
+        "cart"
+      );
+
+
+  el.innerHTML = "";
+
+
+  if (!cart.length) {
+
+    el.innerHTML =
+      "<p style='color:#999'>"
+      + "Chưa có sản phẩm"
+      + "</p>";
+
+  }
+
+
+  cart.forEach(item => {
+
+    const row =
+      document
+        .createElement(
+          "div"
+        );
+
+    row.className =
+      "cart-row";
+
+
+    const left =
+      document
+        .createElement(
+          "div"
+        );
+
+    left.className =
+      "cart-info";
+
+
+    const name =
+      document
+        .createElement(
+          "strong"
+        );
+
+    name.textContent =
+      item.productName;
+
+
+    const id =
+      document
+        .createElement(
+          "div"
+        );
+
+    id.className =
+      "meta";
+
+    id.textContent =
+      item.itemId;
+
+
+    const remove =
+      document
+        .createElement(
+          "div"
+        );
+
+    remove.className =
+      "danger";
+
+    remove.textContent =
+      "Xóa";
+
+    remove.onclick =
+      () =>
+        removeItem(
+          item.itemId
+        );
+
+
+    left.append(
+      name,
+      id,
+      remove
+    );
+
+
+    const price =
+      document
+        .createElement(
+          "div"
+        );
+
+    price.className =
+      "cart-price";
+
+    price.textContent =
+      money(
+        item.price
+      );
+
+
+    row.append(
+      left,
+      price
+    );
+
+
+    el.appendChild(row);
+
+  });
+
+
+  document
+    .getElementById(
+      "count"
+    )
+    .textContent =
+      cart.length;
+
+
+  const total =
+    cart.reduce(
+      (sum, item) =>
+        sum
+        + Number(
+            item.price || 0
+          ),
+      0
+    );
+
+
+  document
+    .getElementById(
+      "total"
+    )
+    .textContent =
+      money(total);
+
+
+  document
+    .getElementById(
+      "payment"
+    )
+    .classList
+    .toggle(
+      "hidden",
+      cart.length === 0
+    );
+
+}
+
+
+/**********************************************
+ * CHECKOUT
+ **********************************************/
+
+async function checkout(
+  paymentMethod
+) {
+
+  if (!cart.length) {
+    return;
+  }
+
+
+  const itemIds =
+    cart.map(
+      item =>
+        item.itemId
+    );
+
+
+  showLoading(
+    "Đang thanh toán..."
+  );
+
+
+  try {
+
+    /*
+     * Apps Script cross-origin POST
+     * can be awkward because of redirects/CORS.
+     *
+     * mode:no-cors ensures the write request
+     * is sent, but browser cannot read response.
+     */
+
+    await fetch(
+      API_URL,
+      {
+        method: "POST",
+
+        mode: "no-cors",
+
+        headers: {
+          "Content-Type":
+            "text/plain"
+        },
+
+        body:
+          JSON.stringify({
+            action:
+              "checkout",
+
+            itemIds:
+              itemIds,
+
+            paymentMethod:
+              paymentMethod
+          })
+      }
+    );
+
+
+    /*
+     * Verify afterwards by querying
+     * each item again.
+     */
+
+    setTimeout(
+      function() {
+
+        verifyCheckout(
+          itemIds
+        );
+
+      },
+      1200
+    );
+
+
+  } catch (err) {
+
+    showError(
+      "Checkout lỗi: "
+      + err
+    );
+
+  }
+
+}
+
+
+/**********************************************
+ * VERIFY CHECKOUT
+ **********************************************/
+
+function verifyCheckout(ids) {
+
+  let checked = 0;
+
+  let allSold = true;
+
+
+  ids.forEach(id => {
+
+    jsonpRequest(
+      {
+        action:
+          "getItem",
+
+        itemId:
+          id
+      },
+
+      function(result) {
+
+        checked++;
+
+
+        if (
+          !result.success ||
+          result.item.status
+            !== "SOLD"
+        ) {
+
+          allSold = false;
+
+        }
+
+
+        if (
+          checked ===
+          ids.length
+        ) {
+
+          if (allSold) {
+
+            cart = [];
+
+            currentItem = null;
+
+            renderCart();
+
+            showSuccess(
+              "✅ Thanh toán thành công"
+            );
+
+            navigator.vibrate?.(
+              [80,80,120]
+            );
+
+          } else {
+
+            showError(
+              "Không xác nhận được thanh toán. "
+              + "Kiểm tra Google Sheet."
+            );
+
+          }
+
+        }
+
+      }
+    );
+
+  });
+
+}
+
+
+/**********************************************
+ * UTILITY
+ **********************************************/
+
+function money(value) {
+
+  return new Intl
+    .NumberFormat(
+      "vi-VN",
+      {
+        style:
+          "currency",
+
+        currency:
+          "VND"
+      }
+    )
+    .format(
+      Number(
+        value || 0
+      )
+    );
+
+}
+
+
+function clearMessage() {
+
+  document
+    .getElementById(
+      "message"
+    )
+    .innerHTML = "";
+
+}
+
+
+function showError(text) {
+
+  document
+    .getElementById(
+      "message"
+    )
+    .innerHTML =
+      '<div class="message error">'
+      + text
+      + "</div>";
+
+}
+
+
+function showSuccess(text) {
+
+  document
+    .getElementById(
+      "message"
+    )
+    .innerHTML =
+      '<div class="message success">'
+      + text
+      + "</div>";
+
+}
+
+
+function showLoading(text) {
+
+  document
+    .getElementById(
+      "message"
+    )
+    .innerHTML =
+      '<div class="message loading">'
+      + text
+      + "</div>";
+
+}
+
+
+renderCart();
+
+</script>
+
+</body>
+</html>
