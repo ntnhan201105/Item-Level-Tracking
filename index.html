@@ -1,1287 +1,859 @@
 <!DOCTYPE html>
 <html lang="vi">
-
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Item POS</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
-<meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
 
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1.0, viewport-fit=cover"
->
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f4f4;
+      color: #1d1d1f;
+    }
 
-<title>Item POS</title>
+    main {
+      max-width: 520px;
+      margin: auto;
+      padding: 16px;
+    }
 
-<script src="https://unpkg.com/html5-qrcode"></script>
+    h1 {
+      text-align: center;
+      font-size: 27px;
+      margin: 8px 0 18px;
+    }
 
-<style>
+    h2 { margin-top: 0; }
 
-* {
-  box-sizing: border-box;
-}
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, .06);
+    }
 
-body {
-  margin: 0;
-  font-family: -apple-system,
-               BlinkMacSystemFont,
-               "Segoe UI",
-               sans-serif;
+    button {
+      border: 0;
+      border-radius: 12px;
+      width: 100%;
+      padding: 15px;
+      margin-top: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
 
-  background: #f4f4f4;
-  color: #1d1d1f;
-}
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
 
-main {
-  max-width: 520px;
-  margin: auto;
-  padding: 16px;
-}
+    .primary { background: #111; color: white; }
+    .secondary { background: #e5e5ea; color: #111; }
+    .cash { background: #333; color: white; }
+    .transfer { background: #1677ff; color: white; }
+    .danger { color: #c62828; cursor: pointer; }
+    .hidden { display: none !important; }
 
-h1 {
-  text-align: center;
-  font-size: 27px;
-  margin: 8px 0 18px;
-}
+    #reader {
+      width: 100%;
+      margin-top: 12px;
+      overflow: hidden;
+      border-radius: 14px;
+    }
 
-.card {
-  background: white;
-  border-radius: 16px;
-  padding: 16px;
-  margin-bottom: 14px;
+    .meta {
+      color: #777;
+      font-size: 13px;
+      margin-top: 5px;
+    }
 
-  box-shadow:
-    0 2px 10px
-    rgba(0,0,0,.06);
-}
+    .cart-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid #eee;
+    }
 
-button {
-  border: 0;
-  border-radius: 12px;
-  width: 100%;
-  padding: 15px;
-  margin-top: 8px;
+    .cart-info { flex: 1; }
+    .cart-price { font-weight: 700; white-space: nowrap; }
 
-  font-size: 16px;
-  font-weight: 700;
-}
+    .total {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 15px;
+      font-size: 22px;
+      font-weight: 800;
+    }
 
-.primary {
-  background: #111;
-  color: white;
-}
+    .message {
+      padding: 12px;
+      margin-bottom: 12px;
+      border-radius: 12px;
+    }
 
-.secondary {
-  background: #e5e5ea;
-}
+    .error { background: #ffebee; color: #b71c1c; }
+    .success { background: #e8f5e9; color: #1b5e20; }
+    .loading { background: white; color: #555; }
 
-.cash {
-  background: #333;
-  color: white;
-}
+    input {
+      width: 100%;
+      padding: 14px;
+      border: 1px solid #ddd;
+      border-radius: 11px;
+      font-size: 16px;
+      margin-top: 8px;
+    }
 
-.transfer {
-  background: #1677ff;
-  color: white;
-}
+    .seller-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      color: #666;
+      font-size: 13px;
+    }
 
-.danger {
-  color: #c62828;
-  cursor: pointer;
-}
+    .seller-bar button {
+      width: auto;
+      margin: 0;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
 
-.hidden {
-  display: none;
-}
-
-#reader {
-  width: 100%;
-  margin-top: 12px;
-  overflow: hidden;
-  border-radius: 14px;
-}
-
-.product-name {
-  font-size: 23px;
-  font-weight: 700;
-}
-
-.meta {
-  color: #777;
-  font-size: 13px;
-  margin-top: 5px;
-}
-
-.price {
-  font-size: 23px;
-  font-weight: 700;
-  margin-top: 12px;
-}
-
-.cart-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-
-  padding: 12px 0;
-  border-bottom: 1px solid #eee;
-}
-
-.cart-info {
-  flex: 1;
-}
-
-.cart-price {
-  font-weight: 700;
-}
-
-.total {
-  display: flex;
-  justify-content: space-between;
-
-  margin-top: 15px;
-
-  font-size: 22px;
-  font-weight: 800;
-}
-
-.message {
-  padding: 12px;
-  margin-bottom: 12px;
-  border-radius: 12px;
-}
-
-.error {
-  background: #ffebee;
-  color: #b71c1c;
-}
-
-.success {
-  background: #e8f5e9;
-  color: #1b5e20;
-}
-
-.loading {
-  background: white;
-  color: #555;
-}
-
-input {
-  width: 100%;
-  padding: 14px;
-
-  border: 1px solid #ddd;
-  border-radius: 11px;
-
-  font-size: 16px;
-}
-
-</style>
-
+    .login-note {
+      color: #777;
+      font-size: 13px;
+      line-height: 1.45;
+      margin-top: 10px;
+    }
+  </style>
 </head>
 
-
 <body>
-
 <main>
+  <h1>🛍️ Bán hàng</h1>
 
-<h1>🛍️ Bán hàng</h1>
+  <div id="message"></div>
 
-
-<div id="message"></div>
-
-
-<div class="card">
-
-  <div id="inventoryStatus" class="message loading">
-    ⏳ Đang tải inventory...
+  <div id="authLoading" class="card">
+    ⏳ Đang kiểm tra đăng nhập...
   </div>
 
-  <button
-    id="scanBtn"
-    class="primary"
-    onclick="startScanner()"
-    disabled
-  >
-    📷 SCAN QR
-  </button>
+  <div id="loginCard" class="card hidden">
+    <h2>Đăng nhập</h2>
 
-  <button
-    id="stopBtn"
-    class="secondary hidden"
-    onclick="stopScanner()"
-  >
-    DỪNG CAMERA
-  </button>
+    <input id="email" type="email" autocomplete="username" placeholder="Email seller">
+    <input id="password" type="password" autocomplete="current-password" placeholder="Mật khẩu">
 
-  <div id="reader"></div>
+    <button id="loginBtn" class="primary">ĐĂNG NHẬP</button>
 
-  <div style="margin-top:16px">
-
-    <input
-      id="manualId"
-      placeholder="Nhập ITEM ID để test"
-      disabled
-    >
-
-    <button
-      id="manualBtn"
-      class="secondary"
-      onclick="manualLookup()"
-      disabled
-    >
-      Tìm item
-    </button>
-
+    <div class="login-note">
+      Chỉ cần đăng nhập một lần trên mỗi máy. Phiên đăng nhập sẽ được lưu trên trình duyệt.
+    </div>
   </div>
 
-</div>
+  <div id="posApp" class="hidden">
+    <div class="seller-bar">
+      <span id="sellerEmail"></span>
+      <button id="logoutBtn" class="secondary">Đăng xuất</button>
+    </div>
 
+    <div class="card">
+      <div id="inventoryStatus" class="message loading">
+        ⏳ Đang kết nối Firestore...
+      </div>
 
-<div class="card">
+      <button id="scanBtn" class="primary" disabled>
+        📷 SCAN QR
+      </button>
 
-  <h2>
-    Giỏ hàng
-    (<span id="count">0</span>)
-  </h2>
+      <button id="stopBtn" class="secondary hidden">
+        DỪNG CAMERA
+      </button>
 
-  <div id="cart"></div>
+      <div id="reader"></div>
 
-  <div class="total">
+      <div style="margin-top:16px">
+        <input id="manualId" placeholder="Nhập ITEM ID để test" disabled>
+        <button id="manualBtn" class="secondary" disabled>Tìm item</button>
+      </div>
+    </div>
 
-    <span>Tổng</span>
+    <div class="card">
+      <h2>Giỏ hàng (<span id="count">0</span>)</h2>
+      <div id="cart"></div>
 
-    <span id="total">
-      0 ₫
-    </span>
+      <div class="total">
+        <span>Tổng</span>
+        <span id="total">0 ₫</span>
+      </div>
+    </div>
 
+    <div id="payment" class="card hidden">
+      <h2>Thanh toán</h2>
+      <button id="cashBtn" class="cash">💵 TIỀN MẶT</button>
+      <button id="transferBtn" class="transfer">📱 CHUYỂN KHOẢN</button>
+    </div>
   </div>
-
-</div>
-
-
-<div
-  id="payment"
-  class="card hidden"
->
-
-  <h2>Thanh toán</h2>
-
-  <button
-    class="cash"
-    onclick="checkout('CASH')"
-  >
-    💵 TIỀN MẶT
-  </button>
-
-  <button
-    class="transfer"
-    onclick="checkout('TRANSFER')"
-  >
-    📱 CHUYỂN KHOẢN
-  </button>
-
-</div>
-
-
 </main>
 
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+  import {
+    getAuth,
+    browserLocalPersistence,
+    setPersistence,
+    signInWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+  import {
+    getFirestore,
+    collection,
+    query,
+    where,
+    onSnapshot,
+    doc,
+    runTransaction,
+    serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
-<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBiq5EnBgcFWb6GJ6_klpStWn-zCzcQKTw",
+    authDomain: "item-level-tracking.firebaseapp.com",
+    projectId: "item-level-tracking",
+    storageBucket: "item-level-tracking.firebasestorage.app",
+    messagingSenderId: "5314179237",
+    appId: "1:5314179237:web:dc7a0a9091de1367a95d4c",
+    measurementId: "G-BB1WG6X23J"
+  };
 
-/**********************************************
- * PUT YOUR APPS SCRIPT URL HERE
- **********************************************/
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-const API_URL =
-  "https://script.google.com/macros/s/AKfycbxWvrc0q35nRPDXWU6gAodYC-SmwYsEeAhu-N3xFCFFNBpdpuEvK1_MEDcaH_hFhKE1cQ/exec";
+  const $ = (id) => document.getElementById(id);
 
-let inventory = {};
-let inventoryLoaded = false;
+  let products = new Map();
+  let rawItems = new Map();
+  let inventory = new Map();
 
-let scanner = null;
-let scannerRunning = false;
+  let productsLoaded = false;
+  let itemsLoaded = false;
+  let inventoryLoaded = false;
+  let readyBannerShown = false;
 
-let cart = [];
+  let unsubscribeProducts = null;
+  let unsubscribeItems = null;
 
-let lookupBusy = false;
+  let scanner = null;
+  let scannerRunning = false;
+  let lookupBusy = false;
+  let lastScannedId = null;
+  let lastScannedAt = 0;
 
-// tránh cùng một QR bị đọc liên tục
-let lastScannedId = null;
-let lastScannedAt = 0;
+  let cart = [];
+  let checkoutRunning = false;
+  let messageTimer = null;
+  let readyTimer = null;
 
-
-/**********************************************
- * START CAMERA
- **********************************************/
-
-async function startScanner() {
-
-  clearMessage();
-
-  if (scannerRunning) {
-    return;
+  const DEVICE_ID_KEY = "item-pos-device-id";
+  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+  if (!deviceId) {
+    deviceId = (crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`);
+    localStorage.setItem(DEVICE_ID_KEY, deviceId);
   }
 
-  scanner =
-    new Html5Qrcode(
-      "reader"
-    );
-
-  try {
-
-    await scanner.start(
-
-      {
-        facingMode:
-          "environment"
-      },
-
-      {
-        fps: 10,
-
-        qrbox: {
-          width: 240,
-          height: 240
-        }
-      },
-
-      onScanSuccess
-
-    );
-
-    scannerRunning = true;
-
-    document
-      .getElementById("scanBtn")
-      .classList
-      .add("hidden");
-
-    document
-      .getElementById("stopBtn")
-      .classList
-      .remove("hidden");
-
-  } catch (err) {
-
-    showError(
-      "Không mở được camera: "
-      + err
-    );
-
+  function money(value) {
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND"
+    }).format(Number(value || 0));
   }
 
-}
-
-
-/**********************************************
- * STOP CAMERA
- **********************************************/
-
-async function stopScanner() {
-
-  if (
-    !scanner ||
-    !scannerRunning
-  ) {
-    return;
+  function normalizeSku(value) {
+    return String(value || "").trim().toUpperCase();
   }
 
-  try {
-
-    await scanner.stop();
-
-    scanner.clear();
-
-  } catch (e) {
-
-    console.log(e);
-
+  function clearMessage() {
+    if (messageTimer) {
+      clearTimeout(messageTimer);
+      messageTimer = null;
+    }
+    $("message").innerHTML = "";
   }
 
-  scannerRunning = false;
+  function showMessage(text, type = "success", timeoutMs = 0) {
+    if (messageTimer) clearTimeout(messageTimer);
 
-  document
-    .getElementById("scanBtn")
-    .classList
-    .remove("hidden");
+    $("message").innerHTML = `<div class="message ${type}">${text}</div>`;
 
-  document
-    .getElementById("stopBtn")
-    .classList
-    .add("hidden");
-
-}
-
-
-/**********************************************
- * QR SUCCESS
- **********************************************/
-
-function onScanSuccess(decodedText) {
-
-  if (
-    lookupBusy ||
-    !inventoryLoaded
-  ) {
-    return;
+    if (timeoutMs > 0) {
+      messageTimer = setTimeout(() => {
+        $("message").innerHTML = "";
+        messageTimer = null;
+      }, timeoutMs);
+    }
   }
 
-  const itemId =
-    extractItemId(
-      decodedText
-    );
-
-  const now =
-    Date.now();
-
-  /*
-   * Nếu vẫn đang dí camera vào
-   * cùng một QR thì bỏ qua.
-   *
-   * Sau 3 giây mới cho scan
-   * lại cùng ID.
-   */
-  if (
-    itemId === lastScannedId &&
-    now - lastScannedAt < 3000
-  ) {
-    return;
+  function showError(text, timeoutMs = 3500) {
+    showMessage(text, "error", timeoutMs);
   }
 
-  lastScannedId = itemId;
-  lastScannedAt = now;
-  lookupBusy = true;
-
-  try {
-    lookupItem(itemId);
-  } catch (err) {
-    console.error(err);
-    showError(
-      "Lỗi khi xử lý QR: " +
-      (err?.message || err)
-    );
-  } finally {
-    /*
-     * Luôn mở khóa scanner, kể cả khi
-     * lookupItem gặp lỗi JavaScript.
-     */
-    setTimeout(function() {
-      lookupBusy = false;
-    }, 500);
+  function showSuccess(text, timeoutMs = 2000) {
+    showMessage(text, "success", timeoutMs);
   }
-}
 
+  function showLoading(text) {
+    showMessage(text, "loading", 0);
+  }
 
-/**********************************************
- * QR CONTENT
- **********************************************/
+  function successFeedback() {
+    navigator.vibrate?.(80);
+  }
 
-function extractItemId(value) {
+  function errorFeedback() {
+    navigator.vibrate?.([100, 60, 100]);
+  }
 
-  value =
-    String(value)
-      .trim();
+  async function login() {
+    const email = $("email").value.trim();
+    const password = $("password").value;
 
-  try {
-
-    const url =
-      new URL(value);
-
-    const id =
-      url.searchParams
-        .get("item");
-
-    if (id) {
-
-      return id
-        .trim()
-        .toUpperCase();
-
+    if (!email || !password) {
+      showError("Nhập email và mật khẩu.");
+      return;
     }
 
-  } catch (e) {}
+    $("loginBtn").disabled = true;
+    showLoading("Đang đăng nhập...");
 
-  return value
-    .toUpperCase();
-
-}
-
-
-/**********************************************
- * MANUAL TEST
- **********************************************/
-
-function manualLookup() {
-
-  const input =
-    document.getElementById(
-      "manualId"
-    );
-
-  const id =
-    input.value
-      .trim();
-
-  if (!id) {
-
-    showError(
-      "Nhập ITEM ID."
-    );
-
-    return;
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+      await signInWithEmailAndPassword(auth, email, password);
+      localStorage.setItem("item-pos-last-email", email);
+      clearMessage();
+    } catch (err) {
+      console.error(err);
+      showError(`Đăng nhập thất bại: ${friendlyAuthError(err)}`, 5000);
+    } finally {
+      $("loginBtn").disabled = false;
+    }
   }
 
-
-  lookupItem(id);
-
-  input.value = "";
-}
-
-/**********************************************
- * GET ITEM
- *
- * JSONP avoids browser CORS problem
- **********************************************/
-
-function successFeedback() {
-
-  if (
-    navigator.vibrate
-  ) {
-
-    navigator.vibrate(
-      80
-    );
-
+  function friendlyAuthError(err) {
+    const code = err?.code || "";
+    if (code === "auth/invalid-credential") return "Sai email hoặc mật khẩu.";
+    if (code === "auth/too-many-requests") return "Thử đăng nhập quá nhiều lần. Hãy chờ một lúc.";
+    if (code === "auth/network-request-failed") return "Không kết nối được Firebase.";
+    if (code === "auth/unauthorized-domain") return "Domain GitHub Pages chưa được thêm vào Firebase Authorized domains.";
+    return err?.message || String(err);
   }
 
-}
-
-
-function errorFeedback() {
-
-  if (
-    navigator.vibrate
-  ) {
-
-    navigator.vibrate(
-      [100, 60, 100]
-    );
-
+  async function logout() {
+    try {
+      await stopScanner();
+      await signOut(auth);
+    } catch (err) {
+      console.error(err);
+      showError(`Không đăng xuất được: ${err?.message || err}`);
+    }
   }
 
-}
-  
-function lookupItem(itemId) {
+  onAuthStateChanged(auth, (user) => {
+    $("authLoading").classList.add("hidden");
 
-  clearMessage();
-
-  itemId =
-    String(itemId)
-      .trim()
-      .toUpperCase();
-
-
-  if (!inventoryLoaded) {
-
-    showError(
-      "Inventory chưa tải xong."
-    );
-
-    return;
-  }
-
-
-  const item =
-    inventory[itemId];
-
-
-  if (!item) {
-
-    showError(
-      "❌ Không tìm thấy "
-      + itemId
-      + " hoặc item đã SOLD."
-    );
-
-    errorFeedback();
-
-    return;
-  }
-
-
-  if (
-    cart.some(
-      x =>
-        x.itemId === itemId
-    )
-  ) {
-
-    showError(
-      "⚠️ "
-      + itemId
-      + " đã có trong đơn hàng."
-    );
-
-    errorFeedback();
-
-    return;
-  }
-
-
-  /*
-   * AUTO ADD
-   */
-  cart.push({
-    ...item
+    if (user) {
+      $("loginCard").classList.add("hidden");
+      $("posApp").classList.remove("hidden");
+      $("sellerEmail").textContent = user.email || "Seller";
+      startRealtimeInventory();
+    } else {
+      stopRealtimeInventory();
+      cart = [];
+      renderCart();
+      $("posApp").classList.add("hidden");
+      $("loginCard").classList.remove("hidden");
+      $("email").value = localStorage.getItem("item-pos-last-email") || "";
+    }
   });
 
+  function startRealtimeInventory() {
+    stopRealtimeInventory();
 
-  renderCart();
+    products.clear();
+    rawItems.clear();
+    inventory.clear();
+    productsLoaded = false;
+    itemsLoaded = false;
+    inventoryLoaded = false;
+    readyBannerShown = false;
 
+    setPosReady(false);
+    $("inventoryStatus").className = "message loading";
+    $("inventoryStatus").textContent = "⏳ Đang tải inventory từ Firestore...";
+    $("inventoryStatus").classList.remove("hidden");
 
-  showSuccess(
-    "✅ Đã add <b>"
-    + escapeHtml(item.itemId)
-    + "</b> vào đơn hàng"
-  );
+    unsubscribeProducts = onSnapshot(
+      collection(db, "products"),
+      (snapshot) => {
+        products.clear();
 
-  // Thông báo add chỉ hiện trong 2 giây
-  setTimeout(function() {
+        snapshot.forEach((snap) => {
+          const data = snap.data();
+          const sku = normalizeSku(snap.id || data.sku || data.SKU);
+          products.set(sku, {
+            sku,
+            productName: data.name ?? data.productName ?? data.PRODUCT_NAME ?? sku,
+            price: Number(data.price ?? data.PRICE ?? 0)
+          });
+        });
+
+        productsLoaded = true;
+        rebuildInventory();
+      },
+      handleInventoryError
+    );
+
+    const inStockQuery = query(
+      collection(db, "items"),
+      where("status", "==", "IN_STOCK")
+    );
+
+    unsubscribeItems = onSnapshot(
+      inStockQuery,
+      (snapshot) => {
+        rawItems.clear();
+
+        snapshot.forEach((snap) => {
+          const data = snap.data();
+          const sku = normalizeSku(data.sku ?? data.SKU);
+          rawItems.set(snap.id.toUpperCase(), {
+            itemId: snap.id.toUpperCase(),
+            sku,
+            status: data.status ?? data.STATUS ?? "IN_STOCK"
+          });
+        });
+
+        itemsLoaded = true;
+        rebuildInventory();
+      },
+      handleInventoryError
+    );
+  }
+
+  function stopRealtimeInventory() {
+    if (unsubscribeProducts) unsubscribeProducts();
+    if (unsubscribeItems) unsubscribeItems();
+    unsubscribeProducts = null;
+    unsubscribeItems = null;
+
+    products.clear();
+    rawItems.clear();
+    inventory.clear();
+    productsLoaded = false;
+    itemsLoaded = false;
+    inventoryLoaded = false;
+    setPosReady(false);
+  }
+
+  function handleInventoryError(err) {
+    console.error("Firestore inventory error", err);
+    setPosReady(false);
+
+    let message = err?.message || String(err);
+    if (err?.code === "permission-denied") {
+      message = "Firestore từ chối quyền truy cập. Kiểm tra UID trong Security Rules.";
+    }
+
+    $("inventoryStatus").className = "message error";
+    $("inventoryStatus").textContent = `❌ ${message}`;
+    $("inventoryStatus").classList.remove("hidden");
+  }
+
+  function rebuildInventory() {
+    inventory.clear();
+
+    for (const [itemId, item] of rawItems.entries()) {
+      const product = products.get(item.sku);
+
+      inventory.set(itemId, {
+        itemId,
+        sku: item.sku,
+        productName: product?.productName || item.sku || "Không có tên",
+        price: Number(product?.price || 0),
+        status: "IN_STOCK"
+      });
+    }
+
+    if (!productsLoaded || !itemsLoaded) return;
+
+    inventoryLoaded = true;
+    setPosReady(true);
+
+    if (!readyBannerShown) {
+      readyBannerShown = true;
+      $("inventoryStatus").className = "message success";
+      $("inventoryStatus").textContent = `✅ Sẵn sàng · ${inventory.size} item đang có hàng`;
+      $("inventoryStatus").classList.remove("hidden");
+
+      if (readyTimer) clearTimeout(readyTimer);
+      readyTimer = setTimeout(() => {
+        $("inventoryStatus").classList.add("hidden");
+      }, 5000);
+    }
+  }
+
+  function setPosReady(ready) {
+    $("scanBtn").disabled = !ready;
+    $("manualId").disabled = !ready;
+    $("manualBtn").disabled = !ready;
+  }
+
+  async function startScanner() {
     clearMessage();
-  }, 2000);
 
-  successFeedback();
-}
+    if (!inventoryLoaded || scannerRunning) return;
 
-/**********************************************
- * JSONP
- **********************************************/
+    try {
+      scanner = new Html5Qrcode("reader");
 
-function jsonpRequest(
-  params,
-  onSuccess
-) {
-
-  const callbackName =
-    "cb_"
-    + Date.now()
-    + "_"
-    + Math.floor(
-        Math.random() * 10000
-      );
-
-
-  window[callbackName] =
-    function(data) {
-
-      onSuccess(data);
-
-      delete
-        window[callbackName];
-
-      script.remove();
-
-    };
-
-
-  const query =
-    new URLSearchParams(
-      {
-        ...params,
-        callback:
-          callbackName
-      }
-    );
-
-
-  const script =
-    document.createElement(
-      "script"
-    );
-
-
-  script.src =
-    API_URL
-    + "?"
-    + query.toString();
-
-
-  script.onerror =
-    function() {
-
-      showError(
-        "Không kết nối được backend."
-      );
-
-      delete
-        window[callbackName];
-
-      script.remove();
-
-    };
-
-
-  document.body
-    .appendChild(script);
-
-}
-
-
-/**********************************************
- * REMOVE
- **********************************************/
-
-function removeItem(id) {
-
-  cart =
-    cart.filter(
-      x =>
-        x.itemId !== id
-    );
-
-  renderCart();
-
-}
-
-
-/**********************************************
- * CART UI
- **********************************************/
-
-function renderCart() {
-
-  const el =
-    document
-      .getElementById(
-        "cart"
-      );
-
-
-  el.innerHTML = "";
-
-
-  if (!cart.length) {
-
-    el.innerHTML =
-      "<p style='color:#999'>"
-      + "Chưa có sản phẩm"
-      + "</p>";
-
-  }
-
-
-  cart.forEach(item => {
-
-    const row =
-      document
-        .createElement(
-          "div"
-        );
-
-    row.className =
-      "cart-row";
-
-
-    const left =
-      document
-        .createElement(
-          "div"
-        );
-
-    left.className =
-      "cart-info";
-
-
-    const name =
-      document
-        .createElement(
-          "strong"
-        );
-
-    name.textContent =
-      item.productName;
-
-
-    const id =
-      document
-        .createElement(
-          "div"
-        );
-
-    id.className =
-      "meta";
-
-    id.textContent =
-      item.itemId;
-
-
-    const remove =
-      document
-        .createElement(
-          "div"
-        );
-
-    remove.className =
-      "danger";
-
-    remove.textContent =
-      "Xóa";
-
-    remove.onclick =
-      () =>
-        removeItem(
-          item.itemId
-        );
-
-
-    left.append(
-      name,
-      id,
-      remove
-    );
-
-
-    const price =
-      document
-        .createElement(
-          "div"
-        );
-
-    price.className =
-      "cart-price";
-
-    price.textContent =
-      money(
-        item.price
-      );
-
-
-    row.append(
-      left,
-      price
-    );
-
-
-    el.appendChild(row);
-
-  });
-
-
-  document
-    .getElementById(
-      "count"
-    )
-    .textContent =
-      cart.length;
-
-
-  const total =
-    cart.reduce(
-      (sum, item) =>
-        sum
-        + Number(
-            item.price || 0
-          ),
-      0
-    );
-
-
-  document
-    .getElementById(
-      "total"
-    )
-    .textContent =
-      money(total);
-
-
-  document
-    .getElementById(
-      "payment"
-    )
-    .classList
-    .toggle(
-      "hidden",
-      cart.length === 0
-    );
-
-}
-
-
-/**********************************************
- * CHECKOUT
- **********************************************/
-
-async function checkout(
-  paymentMethod
-) {
-
-  if (!cart.length) {
-    return;
-  }
-
-
-  const itemIds =
-    cart.map(
-      item =>
-        item.itemId
-    );
-
-
-  showLoading(
-    "Đang thanh toán..."
-  );
-
-
-  try {
-
-    /*
-     * Apps Script cross-origin POST
-     * can be awkward because of redirects/CORS.
-     *
-     * mode:no-cors ensures the write request
-     * is sent, but browser cannot read response.
-     */
-
-    await fetch(
-      API_URL,
-      {
-        method: "POST",
-
-        mode: "no-cors",
-
-        headers: {
-          "Content-Type":
-            "text/plain"
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 240, height: 240 }
         },
+        onScanSuccess,
+        () => {}
+      );
 
-        body:
-          JSON.stringify({
-            action:
-              "checkout",
-
-            itemIds:
-              itemIds,
-
-            paymentMethod:
-              paymentMethod
-          })
-      }
-    );
-
-
-    /*
-     * Verify afterwards by querying
-     * each item again.
-     */
-
-    setTimeout(
-      function() {
-
-        verifyCheckout(
-          itemIds
-        );
-
-      },
-      1200
-    );
-
-
-  } catch (err) {
-
-    showError(
-      "Checkout lỗi: "
-      + err
-    );
-
+      scannerRunning = true;
+      $("scanBtn").classList.add("hidden");
+      $("stopBtn").classList.remove("hidden");
+    } catch (err) {
+      scannerRunning = false;
+      scanner = null;
+      console.error(err);
+      showError(`Không mở được camera: ${err?.message || err}`, 5000);
+    }
   }
 
-}
+  async function stopScanner() {
+    if (!scanner || !scannerRunning) return;
 
+    try {
+      await scanner.stop();
+      scanner.clear();
+    } catch (err) {
+      console.warn("Stop scanner", err);
+    }
 
-/**********************************************
- * VERIFY CHECKOUT
- **********************************************/
+    scannerRunning = false;
+    scanner = null;
+    $("scanBtn").classList.remove("hidden");
+    $("stopBtn").classList.add("hidden");
+  }
 
-function verifyCheckout(ids) {
+  function onScanSuccess(decodedText) {
+    if (lookupBusy || !inventoryLoaded) return;
 
-  let checked = 0;
+    const itemId = extractItemId(decodedText);
+    const now = Date.now();
 
-  let allSold = true;
+    if (itemId === lastScannedId && now - lastScannedAt < 3000) return;
 
-  
-  ids.forEach(id => {
+    lastScannedId = itemId;
+    lastScannedAt = now;
+    lookupBusy = true;
 
-    jsonpRequest(
-      {
-        action:
-          "getItem",
+    try {
+      addItemById(itemId);
+    } catch (err) {
+      console.error(err);
+      showError(`Lỗi khi xử lý QR: ${err?.message || err}`);
+    } finally {
+      setTimeout(() => {
+        lookupBusy = false;
+      }, 400);
+    }
+  }
 
-        itemId:
-          id
-      },
+  function extractItemId(value) {
+    const raw = String(value || "").trim();
 
-      function(result) {
+    try {
+      const url = new URL(raw);
+      const id = url.searchParams.get("item");
+      if (id) return id.trim().toUpperCase();
+    } catch (_) {}
 
-        checked++;
+    return raw.toUpperCase();
+  }
 
+  function manualLookup() {
+    const value = $("manualId").value.trim();
+    if (!value) {
+      showError("Nhập ITEM ID.");
+      return;
+    }
 
-        if (
-          !result.success ||
-          result.item.status
-            !== "SOLD"
-        ) {
+    addItemById(extractItemId(value));
+    $("manualId").value = "";
+  }
 
-          allSold = false;
+  function addItemById(itemId) {
+    if (!inventoryLoaded) {
+      showError("Inventory chưa tải xong.");
+      return;
+    }
 
+    const item = inventory.get(itemId);
+
+    if (!item) {
+      showError(`❌ Không tìm thấy ${itemId} hoặc item không còn IN_STOCK.`, 2500);
+      errorFeedback();
+      return;
+    }
+
+    if (cart.some((x) => x.itemId === itemId)) {
+      showError(`⚠️ ${itemId} đã có trong đơn hàng.`, 2500);
+      errorFeedback();
+      return;
+    }
+
+    cart.push({ ...item });
+    renderCart();
+    showSuccess(`✅ Đã add <b>${escapeHtml(itemId)}</b> vào đơn hàng`, 2000);
+    successFeedback();
+  }
+
+  function removeItem(itemId) {
+    cart = cart.filter((item) => item.itemId !== itemId);
+    renderCart();
+  }
+
+  function renderCart() {
+    const cartEl = $("cart");
+    cartEl.innerHTML = "";
+
+    if (!cart.length) {
+      cartEl.innerHTML = "<p style='color:#999'>Chưa có sản phẩm</p>";
+    }
+
+    for (const item of cart) {
+      const row = document.createElement("div");
+      row.className = "cart-row";
+
+      const left = document.createElement("div");
+      left.className = "cart-info";
+
+      const name = document.createElement("strong");
+      name.textContent = item.productName;
+
+      const id = document.createElement("div");
+      id.className = "meta";
+      id.textContent = item.itemId;
+
+      const remove = document.createElement("div");
+      remove.className = "danger";
+      remove.textContent = "Xóa";
+      remove.addEventListener("click", () => removeItem(item.itemId));
+
+      left.append(name, id, remove);
+
+      const price = document.createElement("div");
+      price.className = "cart-price";
+      price.textContent = money(item.price);
+
+      row.append(left, price);
+      cartEl.appendChild(row);
+    }
+
+    $("count").textContent = cart.length;
+
+    const total = cart.reduce((sum, item) => sum + Number(item.price || 0), 0);
+    $("total").textContent = money(total);
+    $("payment").classList.toggle("hidden", cart.length === 0);
+  }
+
+  function createOrderId() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+    const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const suffix = (crypto.randomUUID?.() || Math.random().toString(36)).replaceAll("-", "").slice(0, 6).toUpperCase();
+    return `ORD-${date}-${time}-${suffix}`;
+  }
+
+  async function checkout(paymentMethod) {
+    if (!cart.length || checkoutRunning || !auth.currentUser) return;
+
+    const cartSnapshot = cart.map((item) => ({ ...item }));
+    const orderId = createOrderId();
+    const orderRef = doc(db, "orders", orderId);
+
+    checkoutRunning = true;
+    setCheckoutButtonsDisabled(true);
+    showLoading("Đang thanh toán...");
+
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        // Firestore transactions require reads before writes.
+        const itemRefs = cartSnapshot.map((item) => doc(db, "items", item.itemId));
+        const itemSnaps = [];
+
+        for (const ref of itemRefs) {
+          itemSnaps.push(await transaction.get(ref));
         }
 
+        const itemRecords = [];
+        const uniqueSkus = new Set();
 
-        if (
-          checked ===
-          ids.length
-        ) {
+        for (let i = 0; i < itemSnaps.length; i++) {
+          const snap = itemSnaps[i];
+          const requestedId = cartSnapshot[i].itemId;
 
-          if (allSold) {
-          
-            /*
-             * Xóa item vừa SOLD khỏi
-             * local inventory
-             */
-            ids.forEach(
-              id => {
-                delete inventory[id];
-              }
-            );
-          
-          
-            cart = [];
-          
-            renderCart();
-          
-          
-            showSuccess(
-              "✅ Thanh toán thành công"
-            );
-          
-          
-            /*
-             * Update inventory counter
-             */
-            const count =
-              Object.keys(
-                inventory
-              ).length;
-          
-            document
-              .getElementById(
-                "inventoryStatus"
-              )
-              .innerHTML =
-                "✅ Sẵn sàng · "
-                + count
-                + " item đang có hàng";
-          
-          
-            successFeedback();
-          } else {
-
-            showError(
-              "Không xác nhận được thanh toán. "
-              + "Kiểm tra Google Sheet."
-            );
-
+          if (!snap.exists()) {
+            throw new Error(`ITEM_UNAVAILABLE|${requestedId}|NOT_FOUND`);
           }
 
+          const data = snap.data();
+          const status = data.status ?? data.STATUS;
+          const sku = normalizeSku(data.sku ?? data.SKU);
+
+          if (status !== "IN_STOCK") {
+            throw new Error(`ITEM_UNAVAILABLE|${requestedId}|${status || "UNKNOWN"}`);
+          }
+
+          itemRecords.push({
+            ref: itemRefs[i],
+            itemId: requestedId,
+            sku
+          });
+          uniqueSkus.add(sku);
         }
 
-      }
-    );
-
-  });
-
-}
-
-
-/**********************************************
- * UTILITY
- **********************************************/
-
-function money(value) {
-
-  return new Intl
-    .NumberFormat(
-      "vi-VN",
-      {
-        style:
-          "currency",
-
-        currency:
-          "VND"
-      }
-    )
-    .format(
-      Number(
-        value || 0
-      )
-    );
-
-}
-
-
-function escapeHtml(value) {
-
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-
-function clearMessage() {
-
-  document
-    .getElementById(
-      "message"
-    )
-    .innerHTML = "";
-
-}
-
-
-function showError(text) {
-
-  document
-    .getElementById(
-      "message"
-    )
-    .innerHTML =
-      '<div class="message error">'
-      + text
-      + "</div>";
-
-}
-
-
-function showSuccess(text) {
-
-  document
-    .getElementById(
-      "message"
-    )
-    .innerHTML =
-      '<div class="message success">'
-      + text
-      + "</div>";
-
-}
-
-
-function showLoading(text) {
-
-  document
-    .getElementById(
-      "message"
-    )
-    .innerHTML =
-      '<div class="message loading">'
-      + text
-      + "</div>";
-
-}
-
-function loadInventory() {
-
-  const status =
-    document.getElementById(
-      "inventoryStatus"
-    );
-
-  status.style.display = "block";
-
-  status.className =
-    "message loading";
-
-  status.innerHTML =
-    "⏳ Đang tải inventory...";
-
-
-  jsonpRequest(
-    {
-      action: "getInventory"
-    },
-
-    function(result) {
-
-      if (!result.success) {
-
-        status.className =
-          "message error";
-
-        status.innerHTML =
-          "❌ Không tải được inventory";
-
-        return;
-      }
-
-
-      inventory =
-        result.inventory || {};
-
-      inventoryLoaded = true;
-
-
-      const count =
-        Object.keys(
-          inventory
-        ).length;
-
-
-      status.className =
-        "message success";
-
-      status.innerHTML =
-        "✅ Sẵn sàng · "
-        + count
-        + " item đang có hàng";
-
-      // Tự ẩn thông báo sẵn sàng sau 5 giây
-      setTimeout(function() {
-        if (inventoryLoaded) {
-          status.style.display = "none";
+        const productDocs = new Map();
+        for (const sku of uniqueSkus) {
+          const productSnap = await transaction.get(doc(db, "products", sku));
+          productDocs.set(sku, productSnap.exists() ? productSnap.data() : {});
         }
-      }, 5000);
 
+        const orderItems = itemRecords.map((item) => {
+          const product = productDocs.get(item.sku) || {};
+          return {
+            itemId: item.itemId,
+            sku: item.sku,
+            productName: product.name ?? product.productName ?? product.PRODUCT_NAME ?? item.sku,
+            price: Number(product.price ?? product.PRICE ?? 0)
+          };
+        });
 
-      // Enable POS
-      document
-        .getElementById(
-          "scanBtn"
-        )
-        .disabled = false;
+        const totalAmount = orderItems.reduce((sum, item) => sum + item.price, 0);
 
-      document
-        .getElementById(
-          "manualId"
-        )
-        .disabled = false;
+        // All reads are complete; now perform writes atomically.
+        for (const item of itemRecords) {
+          transaction.update(item.ref, {
+            status: "SOLD",
+            orderId,
+            soldAt: serverTimestamp(),
+            soldBy: auth.currentUser.uid,
+            soldDeviceId: deviceId
+          });
+        }
 
-      document
-        .getElementById(
-          "manualBtn"
-        )
-        .disabled = false;
+        transaction.set(orderRef, {
+          orderId,
+          status: "COMPLETED",
+          paymentMethod,
+          totalAmount,
+          totalItems: orderItems.length,
+          sellerUid: auth.currentUser.uid,
+          sellerEmail: auth.currentUser.email || "",
+          deviceId,
+          createdAt: serverTimestamp(),
+          items: orderItems
+        });
 
+        return {
+          orderId,
+          totalAmount,
+          totalItems: orderItems.length
+        };
+      });
+
+      // Realtime listener will also remove these items from inventory.
+      for (const item of cartSnapshot) {
+        inventory.delete(item.itemId);
+        rawItems.delete(item.itemId);
+      }
+
+      cart = [];
+      renderCart();
+      showSuccess(
+        `✅ Thanh toán thành công · ${result.totalItems} item · ${money(result.totalAmount)}`,
+        4000
+      );
+      successFeedback();
+    } catch (err) {
+      console.error("Checkout failed", err);
+
+      const raw = err?.message || String(err);
+      if (raw.includes("ITEM_UNAVAILABLE|")) {
+        const marker = raw.substring(raw.indexOf("ITEM_UNAVAILABLE|"));
+        const [_, itemId, status] = marker.split("|");
+        showError(`❌ ${itemId} không thể checkout (${status}). Inventory đã được cập nhật realtime.`, 6000);
+      } else if (err?.code === "permission-denied") {
+        showError("Firestore từ chối checkout. Kiểm tra Security Rules.", 6000);
+      } else {
+        showError(`Checkout lỗi: ${raw}`, 6000);
+      }
+      errorFeedback();
+    } finally {
+      checkoutRunning = false;
+      setCheckoutButtonsDisabled(false);
     }
-  );
-}
+  }
 
-renderCart();
-loadInventory();
+  function setCheckoutButtonsDisabled(disabled) {
+    $("cashBtn").disabled = disabled;
+    $("transferBtn").disabled = disabled;
+  }
 
+  function escapeHtml(text) {
+    return String(text ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  $("loginBtn").addEventListener("click", login);
+  $("password").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") login();
+  });
+  $("logoutBtn").addEventListener("click", logout);
+  $("scanBtn").addEventListener("click", startScanner);
+  $("stopBtn").addEventListener("click", stopScanner);
+  $("manualBtn").addEventListener("click", manualLookup);
+  $("manualId").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") manualLookup();
+  });
+  $("cashBtn").addEventListener("click", () => checkout("CASH"));
+  $("transferBtn").addEventListener("click", () => checkout("TRANSFER"));
+
+  renderCart();
 </script>
-
 </body>
 </html>
