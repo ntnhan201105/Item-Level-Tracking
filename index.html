@@ -58,6 +58,8 @@
     .secondary { background: #e5e5ea; color: #111; }
     .cash { background: #333; color: white; }
     .transfer { background: #1677ff; color: white; }
+    .restock { background: #0f7b6c; color: white; }
+    .restock-scan { background: #dff5f0; color: #0b5f54; }
     .danger { color: #c62828; cursor: pointer; }
     .hidden { display: none !important; }
 
@@ -103,13 +105,14 @@
     .success { background: #e8f5e9; color: #1b5e20; }
     .loading { background: white; color: #555; }
 
-    input {
+    input, select {
       width: 100%;
       padding: 14px;
       border: 1px solid #ddd;
       border-radius: 11px;
       font-size: 16px;
       margin-top: 8px;
+      background: white;
     }
 
     .seller-bar {
@@ -203,6 +206,24 @@
       <button id="cashBtn" class="cash">💵 TIỀN MẶT</button>
       <button id="transferBtn" class="transfer">📱 CHUYỂN KHOẢN</button>
     </div>
+
+    <div class="card">
+      <h2>↩️ Hoàn tác bán / đưa lại vào kho</h2>
+      <div class="login-note">
+        Dùng khi checkout nhầm hoặc hàng được trả lại. Thao tác này giữ lịch sử order để audit.
+      </div>
+
+      <input id="restockItemId" placeholder="ITEM ID cần đưa lại vào kho">
+
+      <select id="restockReason">
+        <option value="CHECKOUT_MISTAKE">Checkout nhầm</option>
+        <option value="CUSTOMER_RETURN">Khách trả hàng</option>
+        <option value="OTHER">Khác</option>
+      </select>
+
+      <button id="restockScanBtn" class="restock-scan">📷 QUÉT ITEM CẦN HOÀN TÁC</button>
+      <button id="restockBtn" class="restock">↩️ ĐƯA LẠI VÀO KHO</button>
+    </div>
   </div>
 </main>
 
@@ -257,12 +278,14 @@
 
   let scanner = null;
   let scannerRunning = false;
+  let scannerMode = "sale";
   let lookupBusy = false;
   let lastScannedId = null;
   let lastScannedAt = 0;
 
   let cart = [];
   let checkoutRunning = false;
+  let restockRunning = false;
   let messageTimer = null;
   let readyTimer = null;
 
@@ -519,10 +542,11 @@
     $("manualBtn").disabled = !ready;
   }
 
-  async function startScanner() {
+  async function startScanner(mode = "sale") {
     clearMessage();
 
     if (!inventoryLoaded || scannerRunning) return;
+    scannerMode = mode;
 
     try {
       scanner = new Html5Qrcode("reader");
@@ -577,7 +601,13 @@
     lookupBusy = true;
 
     try {
-      addItemById(itemId);
+      if (scannerMode === "restock") {
+        $("restockItemId").value = itemId;
+        showSuccess(`✅ Đã quét <b>${escapeHtml(itemId)}</b>. Kiểm tra rồi bấm "ĐƯA LẠI VÀO KHO".`, 3000);
+        stopScanner();
+      } else {
+        addItemById(itemId);
+      }
     } catch (err) {
       console.error(err);
       showError(`Lỗi khi xử lý QR: ${err?.message || err}`);
@@ -768,7 +798,8 @@
             orderId,
             soldAt: serverTimestamp(),
             soldBy: auth.currentUser.uid,
-            soldDeviceId: deviceId
+            soldDeviceId: deviceId,
+            updatedAt: serverTimestamp()
           });
         }
 
@@ -782,6 +813,8 @@
           sellerEmail: auth.currentUser.email || "",
           deviceId,
           createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          voidedItemIds: [],
           items: orderItems
         });
 
@@ -825,6 +858,155 @@
     }
   }
 
+  async function restockItem() {
+    if (restockRunning || checkoutRunning || !auth.currentUser) return;
+
+    const itemId = $("restockItemId").value.trim().toUpperCase();
+    const reason = $("restockReason").value;
+
+    if (!itemId) {
+      showError("Nhập hoặc quét ITEM ID cần đưa lại vào kho.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Đưa ${itemId} từ SOLD về IN_STOCK?\n\n` +
+      `Lý do: ${reason}\n\n` +
+      "Thao tác này sẽ cập nhật cả item và order gốc."
+    );
+
+    if (!confirmed) return;
+
+    restockRunning = true;
+    $("restockBtn").disabled = true;
+    $("restockScanBtn").disabled = true;
+    showLoading(`Đang đưa ${itemId} lại vào kho...`);
+
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        const itemRef = doc(db, "items", itemId);
+        const itemSnap = await transaction.get(itemRef);
+
+        if (!itemSnap.exists()) {
+          throw new Error(`RESTOCK_ERROR|${itemId}|NOT_FOUND`);
+        }
+
+        const itemData = itemSnap.data();
+        const status = itemData.status ?? itemData.STATUS;
+        const previousOrderId = itemData.orderId ?? itemData.ORDER_ID ?? null;
+
+        if (status !== "SOLD") {
+          throw new Error(`RESTOCK_ERROR|${itemId}|${status || "UNKNOWN"}`);
+        }
+
+        let orderRef = null;
+        let orderData = null;
+
+        if (previousOrderId) {
+          orderRef = doc(db, "orders", previousOrderId);
+          const orderSnap = await transaction.get(orderRef);
+          if (orderSnap.exists()) {
+            orderData = orderSnap.data();
+          }
+        }
+
+        // All reads are complete. Preserve sale audit info before clearing active sale fields.
+        transaction.update(itemRef, {
+          status: "IN_STOCK",
+          orderId: null,
+          soldAt: null,
+          soldBy: null,
+          soldDeviceId: null,
+          updatedAt: serverTimestamp(),
+          restockedAt: serverTimestamp(),
+          restockedBy: auth.currentUser.uid,
+          restockedDeviceId: deviceId,
+          restockReason: reason,
+          lastOrderId: previousOrderId,
+          lastSoldAt: itemData.soldAt ?? null,
+          lastSoldBy: itemData.soldBy ?? null,
+          lastSoldDeviceId: itemData.soldDeviceId ?? null
+        });
+
+        let orderStatus = null;
+
+        if (orderRef && orderData) {
+          const orderItems = Array.isArray(orderData.items) ? orderData.items : [];
+          const existingVoided = Array.isArray(orderData.voidedItemIds)
+            ? orderData.voidedItemIds.map((x) => String(x).toUpperCase())
+            : [];
+
+          const voidedSet = new Set(existingVoided);
+          voidedSet.add(itemId);
+
+          const orderItemIds = orderItems
+            .map((x) => String(x?.itemId ?? x?.id ?? x ?? "").toUpperCase())
+            .filter(Boolean);
+
+          const activeItemIds = orderItemIds.filter((id) => !voidedSet.has(id));
+          orderStatus = activeItemIds.length === 0 ? "VOIDED" : "PARTIALLY_VOIDED";
+
+          const activeTotalAmount = orderItems.reduce((sum, x) => {
+            const id = String(x?.itemId ?? x?.id ?? x ?? "").toUpperCase();
+            if (!id || voidedSet.has(id)) return sum;
+            return sum + Number(x?.price ?? 0);
+          }, 0);
+
+          transaction.update(orderRef, {
+            status: orderStatus,
+            voidedItemIds: Array.from(voidedSet),
+            activeItems: activeItemIds.length,
+            activeTotalAmount,
+            updatedAt: serverTimestamp(),
+            lastRestockedAt: serverTimestamp(),
+            lastRestockedItemId: itemId,
+            lastRestockedBy: auth.currentUser.uid,
+            lastRestockReason: reason
+          });
+        }
+
+        return {
+          itemId,
+          previousOrderId,
+          orderStatus
+        };
+      });
+
+      $("restockItemId").value = "";
+      showSuccess(
+        `✅ ${escapeHtml(result.itemId)} đã được đưa lại vào kho` +
+        (result.previousOrderId
+          ? ` · order ${escapeHtml(result.previousOrderId)} ${result.orderStatus || "đã được cập nhật"}`
+          : ""),
+        5000
+      );
+      successFeedback();
+    } catch (err) {
+      console.error("Restock failed", err);
+
+      const raw = err?.message || String(err);
+      if (raw.includes("RESTOCK_ERROR|")) {
+        const marker = raw.substring(raw.indexOf("RESTOCK_ERROR|"));
+        const [_, failedItemId, state] = marker.split("|");
+
+        if (state === "NOT_FOUND") {
+          showError(`❌ Không tìm thấy ${failedItemId} trong Firestore.`, 6000);
+        } else {
+          showError(`❌ ${failedItemId} không thể đưa lại vào kho vì status hiện tại là ${state}.`, 6000);
+        }
+      } else if (err?.code === "permission-denied") {
+        showError("Firestore từ chối thao tác restock. Kiểm tra Security Rules.", 6000);
+      } else {
+        showError(`Restock lỗi: ${raw}`, 6000);
+      }
+      errorFeedback();
+    } finally {
+      restockRunning = false;
+      $("restockBtn").disabled = false;
+      $("restockScanBtn").disabled = false;
+    }
+  }
+
   function setCheckoutButtonsDisabled(disabled) {
     $("cashBtn").disabled = disabled;
     $("transferBtn").disabled = disabled;
@@ -844,7 +1026,7 @@
     if (e.key === "Enter") login();
   });
   $("logoutBtn").addEventListener("click", logout);
-  $("scanBtn").addEventListener("click", startScanner);
+  $("scanBtn").addEventListener("click", () => startScanner("sale"));
   $("stopBtn").addEventListener("click", stopScanner);
   $("manualBtn").addEventListener("click", manualLookup);
   $("manualId").addEventListener("keydown", (e) => {
@@ -852,6 +1034,11 @@
   });
   $("cashBtn").addEventListener("click", () => checkout("CASH"));
   $("transferBtn").addEventListener("click", () => checkout("TRANSFER"));
+  $("restockScanBtn").addEventListener("click", () => startScanner("restock"));
+  $("restockBtn").addEventListener("click", restockItem);
+  $("restockItemId").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") restockItem();
+  });
 
   renderCart();
 </script>
