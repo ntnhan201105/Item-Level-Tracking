@@ -101,6 +101,38 @@
       border-radius: 12px;
     }
 
+    /* Global toast: always visible even when the page is scrolled. */
+    #message {
+      position: fixed;
+      top: calc(env(safe-area-inset-top, 0px) + 12px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(480px, calc(100% - 24px));
+      z-index: 9999;
+      pointer-events: none;
+    }
+
+    #message:empty {
+      display: none;
+    }
+
+    #message .message {
+      margin: 0;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, .18);
+      animation: toastIn .18s ease-out;
+    }
+
+    @keyframes toastIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px) scale(.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
     .error { background: #ffebee; color: #b71c1c; }
     .success { background: #e8f5e9; color: #1b5e20; }
     .loading { background: white; color: #555; }
@@ -145,7 +177,7 @@
 <main>
   <h1>🛍️ Bán hàng</h1>
 
-  <div id="message"></div>
+  <div id="message" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <div id="authLoading" class="card">
     ⏳ Đang kiểm tra đăng nhập...
