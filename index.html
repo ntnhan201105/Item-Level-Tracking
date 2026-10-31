@@ -87,6 +87,10 @@
     .cart-info { flex: 1; }
     .cart-price { font-weight: 700; white-space: nowrap; }
 
+    .combo-panel { background: #edf8f0; border: 1px solid #b7dfc0; border-radius: 12px; padding: 12px; margin-top: 12px; }
+    .combo-row { display:flex; justify-content:space-between; gap:8px; padding:5px 0; font-size:14px; }
+    .discount-text { color:#147238; font-weight:700; }
+    .price-summary { display:flex; justify-content:space-between; margin-top:9px; font-size:15px; }
     .total {
       display: flex;
       justify-content: space-between;
@@ -227,6 +231,9 @@
       <h2>Giỏ hàng (<span id="count">0</span>)</h2>
       <div id="cart"></div>
 
+      <div id="comboPanel" class="combo-panel hidden"></div>
+      <div id="subtotalRow" class="price-summary hidden"><span>Giá lẻ</span><span id="subtotal">0 ₫</span></div>
+      <div id="discountRow" class="price-summary hidden discount-text"><span>Giảm combo</span><span id="discount">0 ₫</span></div>
       <div class="total">
         <span>Tổng</span>
         <span id="total">0 ₫</span>
@@ -337,6 +344,59 @@
 
   function normalizeSku(value) {
     return String(value || "").trim().toUpperCase();
+  }
+
+  // Combo prices are fixed. DC1/DC2 and PIN1/PIN2 are interchangeable.
+  // STICK is reserved for the future sticker SKU (5,000 VND).
+  const COMBOS = [
+    { id: "COMBO1", name: "Accessories", price: 90000, needs: { DC: 1, KEYR: 1, PIN: 1, STICK: 1 } },
+    { id: "COMBO2", name: "Mini Gift", price: 129000, needs: { KHAN: 1, DC: 1, PIN: 1 } },
+    { id: "COMBO3", name: "Classic", price: 250000, needs: { THUN: 1, KHAN: 1, PIN: 1 } },
+    { id: "COMBO4", name: "Basic", price: 290000, needs: { THUN: 1, KHAN: 1, DC: 1, PIN: 1 } },
+    { id: "COMBO5", name: "Couple", price: 330000, needs: { THUN: 1, BABYT: 1, PIN: 2 } },
+    { id: "COMBO6", name: "Double", price: 570000, needs: { THUN: 2, KHAN: 2, DC: 2, PIN: 2 } },
+    { id: "COMBO7", name: "Group", price: 1440000, needs: { THUN: 5, KHAN: 5, DC: 5, PIN: 5 } }
+  ];
+
+  function comboGroup(sku) {
+    if (sku === "DC1" || sku === "DC2") return "DC";
+    if (sku === "PIN1" || sku === "PIN2") return "PIN";
+    if (sku === "STICKER") return "STICK";
+    return sku;
+  }
+
+  // Named-combo priority: Group > Double > Couple > Basic > Classic >
+  // Mini Gift > Accessories. Each item belongs to at most one combo.
+  // Priority is intentional: e.g. 5 Classics could cost less than Group,
+  // but the shop's published Group price must apply to a Group match.
+  function calculatePricing(orderItems) {
+    const subtotal = orderItems.reduce((sum, x) => sum + Number(x.price || 0), 0);
+    const available = {};
+    for (const item of orderItems) {
+      const group = comboGroup(normalizeSku(item.sku));
+      (available[group] ||= []).push(item);
+    }
+    Object.values(available).forEach(xs => xs.sort((a,b) => a.itemId.localeCompare(b.itemId)));
+    const appliedCombos = [];
+    for (const combo of [...COMBOS].reverse()) {
+      while (Object.entries(combo.needs).every(([g,n]) => (available[g] || []).length >= n)) {
+        const selected = [];
+        for (const [g,n] of Object.entries(combo.needs)) selected.push(...available[g].splice(0,n));
+        const retailAmount = selected.reduce((s,x)=>s+Number(x.price || 0),0);
+        // Never charge more than retail for a matched bundle.
+        if (retailAmount < combo.price) {
+          for (const item of selected) available[comboGroup(normalizeSku(item.sku))].unshift(item);
+          break;
+        }
+        appliedCombos.push({
+          comboId: combo.id, name: combo.name, price: combo.price,
+          retailAmount, discountAmount: retailAmount - combo.price,
+          itemIds: selected.map(x=>x.itemId)
+        });
+      }
+    }
+    const discountAmount = appliedCombos.reduce((s,c)=>s+c.discountAmount,0);
+    return { subtotal, discountAmount, totalAmount: subtotal - discountAmount, appliedCombos };
   }
 
   function clearMessage() {
@@ -743,8 +803,19 @@
 
     $("count").textContent = cart.length;
 
-    const total = cart.reduce((sum, item) => sum + Number(item.price || 0), 0);
-    $("total").textContent = money(total);
+    const pricing = calculatePricing(cart);
+    const hasCombo = pricing.appliedCombos.length > 0;
+    $("comboPanel").classList.toggle("hidden", !hasCombo);
+    $("subtotalRow").classList.toggle("hidden", !hasCombo);
+    $("discountRow").classList.toggle("hidden", !hasCombo);
+    $("subtotal").textContent = money(pricing.subtotal);
+    $("discount").textContent = "−" + money(pricing.discountAmount);
+    $("comboPanel").innerHTML = hasCombo
+      ? `<strong>🎁 Combo tự động áp dụng</strong>` + pricing.appliedCombos.map(c =>
+          `<div class="combo-row"><span>${escapeHtml(c.comboId)} — ${escapeHtml(c.name)}</span><span>${money(c.price)} (−${money(c.discountAmount)})</span></div>`
+        ).join("")
+      : "";
+    $("total").textContent = money(pricing.totalAmount);
     $("payment").classList.toggle("hidden", cart.length === 0);
   }
 
@@ -821,7 +892,7 @@
           };
         });
 
-        const totalAmount = orderItems.reduce((sum, item) => sum + item.price, 0);
+        const pricing = calculatePricing(orderItems);
 
         // All reads are complete; now perform writes atomically.
         for (const item of itemRecords) {
@@ -839,7 +910,15 @@
           orderId,
           status: "COMPLETED",
           paymentMethod,
-          totalAmount,
+          subtotal: pricing.subtotal,
+          discountAmount: pricing.discountAmount,
+          totalAmount: pricing.totalAmount,
+          activeSubtotal: pricing.subtotal,
+          activeDiscountAmount: pricing.discountAmount,
+          activeTotalAmount: pricing.totalAmount,
+          activeItems: orderItems.length,
+          appliedCombos: pricing.appliedCombos,
+          activeCombos: pricing.appliedCombos,
           totalItems: orderItems.length,
           sellerUid: auth.currentUser.uid,
           sellerEmail: auth.currentUser.email || "",
@@ -852,7 +931,7 @@
 
         return {
           orderId,
-          totalAmount,
+          totalAmount: pricing.totalAmount,
           totalItems: orderItems.length
         };
       });
@@ -978,17 +1057,24 @@
           const activeItemIds = orderItemIds.filter((id) => !voidedSet.has(id));
           orderStatus = activeItemIds.length === 0 ? "VOIDED" : "PARTIALLY_VOIDED";
 
-          const activeTotalAmount = orderItems.reduce((sum, x) => {
-            const id = String(x?.itemId ?? x?.id ?? x ?? "").toUpperCase();
-            if (!id || voidedSet.has(id)) return sum;
-            return sum + Number(x?.price ?? 0);
-          }, 0);
+          const remainingItems = orderItems.filter(x =>
+            !voidedSet.has(String(x?.itemId ?? x?.id ?? x ?? "").toUpperCase())
+          );
+          // For orders created before combo support, retain their original
+          // pricing behavior; new orders are re-priced from remaining items.
+          const pricing = (orderData.subtotal !== undefined)
+            ? calculatePricing(remainingItems)
+            : { subtotal: remainingItems.reduce((s,x) => s + Number(x?.price || 0),0),
+                discountAmount: 0, totalAmount: remainingItems.reduce((s,x) => s + Number(x?.price || 0),0), appliedCombos: [] };
 
           transaction.update(orderRef, {
             status: orderStatus,
             voidedItemIds: Array.from(voidedSet),
             activeItems: activeItemIds.length,
-            activeTotalAmount,
+            activeSubtotal: pricing.subtotal,
+            activeDiscountAmount: pricing.discountAmount,
+            activeTotalAmount: pricing.totalAmount,
+            activeCombos: pricing.appliedCombos,
             updatedAt: serverTimestamp(),
             lastRestockedAt: serverTimestamp(),
             lastRestockedItemId: itemId,
