@@ -1,1 +1,5 @@
 serviceAccountKey.json
+.runtime-deps/
+correction_backups/
+__pycache__/
+*.csv

@@ -9,6 +9,7 @@ Optional:
 
 Safety:
 - Dry-run by default. Nothing is written unless --commit is passed.
+- Dry runs read current counters from Firestore but do not reserve IDs.
 - Uses a Firestore counter per ID prefix so later imports continue sequences
   without reusing ITEM_IDs.
 - Writes items in batches (default 400 writes per batch).
@@ -263,11 +264,20 @@ def chunked(items: List[dict], size: int) -> Iterable[List[dict]]:
         yield items[i : i + size]
 
 
-def generate_preview(rows: List[StockRow]) -> List[dict]:
-    """Dry-run IDs start at 1 per prefix because no counter is modified."""
+def generate_preview(db, rows: List[StockRow]) -> List[dict]:
+    """Preview IDs using current counters without reserving or writing anything."""
     output: List[dict] = []
+    next_numbers: Dict[str, int] = {}
     for r in rows:
-        for seq in range(1, r.quantity + 1):
+        if r.id_prefix not in next_numbers:
+            snap = db.collection("counters").document(r.id_prefix).get()
+            data = (snap.to_dict() or {}) if snap.exists else {}
+            next_numbers[r.id_prefix] = int(data.get("nextNumber", 1))
+        start = next_numbers[r.id_prefix]
+        if start < 1:
+            raise ValueError(f"Invalid nextNumber for counter {r.id_prefix!r}: {start}")
+        next_numbers[r.id_prefix] = start + r.quantity
+        for seq in range(start, start + r.quantity):
             item_id = f"{r.id_prefix}-{seq:0{ID_WIDTH}d}"
             output.append(
                 {
@@ -407,9 +417,15 @@ def main() -> int:
 
     if not args.commit:
         print("DRY RUN: no Firestore data will be changed.")
-        records = generate_preview(rows)
-        write_csv(records, output_path)
+        try:
+            db = init_firestore(args.project_id, args.service_account)
+            records = generate_preview(db, rows)
+            write_csv(records, output_path)
+        except Exception as exc:
+            print(f"ERROR generating Firestore counter preview: {exc}", file=sys.stderr)
+            return 1
         print(f"Preview CSV written: {output_path.resolve()}")
+        print("IDs reflect current Firebase counters and are not reserved; another import can change them.")
         print("\nWhen ready, rerun the same command with --commit.")
         return 0
 

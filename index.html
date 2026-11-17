@@ -279,9 +279,8 @@
   import {
     getFirestore,
     collection,
-    query,
-    where,
     onSnapshot,
+    getDoc,
     doc,
     runTransaction,
     serverTimestamp
@@ -304,21 +303,17 @@
   const $ = (id) => document.getElementById(id);
 
   let products = new Map();
-  let rawItems = new Map();
-  let inventory = new Map();
-
-  let productsLoaded = false;
-  let itemsLoaded = false;
+  // Read items only when scanned, never subscribe to the entire items collection.
   let inventoryLoaded = false;
   let readyBannerShown = false;
 
   let unsubscribeProducts = null;
-  let unsubscribeItems = null;
 
   let scanner = null;
   let scannerRunning = false;
   let scannerMode = "sale";
   let lookupBusy = false;
+  let scannerStarting = false;
   let lastScannedId = null;
   let lastScannedAt = 0;
 
@@ -504,25 +499,19 @@
 
   function startRealtimeInventory() {
     stopRealtimeInventory();
-
     products.clear();
-    rawItems.clear();
-    inventory.clear();
-    productsLoaded = false;
-    itemsLoaded = false;
     inventoryLoaded = false;
     readyBannerShown = false;
-
     setPosReady(false);
     $("inventoryStatus").className = "message loading";
-    $("inventoryStatus").textContent = "⏳ Đang tải inventory từ Firestore...";
+    $("inventoryStatus").textContent = "⏳ Đang tải danh sách sản phẩm...";
     $("inventoryStatus").classList.remove("hidden");
 
+    // products is a small collection; items are fetched on demand by ID.
     unsubscribeProducts = onSnapshot(
       collection(db, "products"),
       (snapshot) => {
         products.clear();
-
         snapshot.forEach((snap) => {
           const data = snap.data();
           const sku = normalizeSku(snap.id || data.sku || data.SKU);
@@ -532,35 +521,16 @@
             price: Number(data.price ?? data.PRICE ?? 0)
           });
         });
-
-        productsLoaded = true;
-        rebuildInventory();
-      },
-      handleInventoryError
-    );
-
-    const inStockQuery = query(
-      collection(db, "items"),
-      where("status", "==", "IN_STOCK")
-    );
-
-    unsubscribeItems = onSnapshot(
-      inStockQuery,
-      (snapshot) => {
-        rawItems.clear();
-
-        snapshot.forEach((snap) => {
-          const data = snap.data();
-          const sku = normalizeSku(data.sku ?? data.SKU);
-          rawItems.set(snap.id.toUpperCase(), {
-            itemId: snap.id.toUpperCase(),
-            sku,
-            status: data.status ?? data.STATUS ?? "IN_STOCK"
-          });
-        });
-
-        itemsLoaded = true;
-        rebuildInventory();
+        inventoryLoaded = true;
+        setPosReady(true);
+        if (!readyBannerShown) {
+          readyBannerShown = true;
+          $("inventoryStatus").className = "message success";
+          $("inventoryStatus").textContent = "✅ Sẵn sàng · Quét QR để kiểm tra từng item";
+          $("inventoryStatus").classList.remove("hidden");
+          if (readyTimer) clearTimeout(readyTimer);
+          readyTimer = setTimeout(() => $("inventoryStatus").classList.add("hidden"), 5000);
+        }
       },
       handleInventoryError
     );
@@ -568,64 +538,23 @@
 
   function stopRealtimeInventory() {
     if (unsubscribeProducts) unsubscribeProducts();
-    if (unsubscribeItems) unsubscribeItems();
     unsubscribeProducts = null;
-    unsubscribeItems = null;
-
+    if (readyTimer) clearTimeout(readyTimer);
     products.clear();
-    rawItems.clear();
-    inventory.clear();
-    productsLoaded = false;
-    itemsLoaded = false;
     inventoryLoaded = false;
     setPosReady(false);
   }
 
   function handleInventoryError(err) {
-    console.error("Firestore inventory error", err);
+    console.error("Firestore products error", err);
+    inventoryLoaded = false;
     setPosReady(false);
-
-    let message = err?.message || String(err);
-    if (err?.code === "permission-denied") {
-      message = "Firestore từ chối quyền truy cập. Kiểm tra UID trong Security Rules.";
-    }
-
+    const message = err?.code === "permission-denied"
+      ? "Firestore từ chối quyền truy cập. Kiểm tra UID trong Security Rules."
+      : (err?.message || String(err));
     $("inventoryStatus").className = "message error";
     $("inventoryStatus").textContent = `❌ ${message}`;
     $("inventoryStatus").classList.remove("hidden");
-  }
-
-  function rebuildInventory() {
-    inventory.clear();
-
-    for (const [itemId, item] of rawItems.entries()) {
-      const product = products.get(item.sku);
-
-      inventory.set(itemId, {
-        itemId,
-        sku: item.sku,
-        productName: product?.productName || item.sku || "Không có tên",
-        price: Number(product?.price || 0),
-        status: "IN_STOCK"
-      });
-    }
-
-    if (!productsLoaded || !itemsLoaded) return;
-
-    inventoryLoaded = true;
-    setPosReady(true);
-
-    if (!readyBannerShown) {
-      readyBannerShown = true;
-      $("inventoryStatus").className = "message success";
-      $("inventoryStatus").textContent = `✅ Sẵn sàng · ${inventory.size} item đang có hàng`;
-      $("inventoryStatus").classList.remove("hidden");
-
-      if (readyTimer) clearTimeout(readyTimer);
-      readyTimer = setTimeout(() => {
-        $("inventoryStatus").classList.add("hidden");
-      }, 5000);
-    }
   }
 
   function setPosReady(ready) {
@@ -637,7 +566,8 @@
   async function startScanner(mode = "sale") {
     clearMessage();
 
-    if (!inventoryLoaded || scannerRunning) return;
+    if (!inventoryLoaded || scannerRunning || scannerStarting) return;
+    scannerStarting = true;
     scannerMode = mode;
 
     try {
@@ -654,10 +584,12 @@
       );
 
       scannerRunning = true;
+      scannerStarting = false;
       $("scanBtn").classList.add("hidden");
       $("stopBtn").classList.remove("hidden");
     } catch (err) {
       scannerRunning = false;
+      scannerStarting = false;
       scanner = null;
       console.error(err);
       showError(`Không mở được camera: ${err?.message || err}`, 5000);
@@ -680,33 +612,27 @@
     $("stopBtn").classList.add("hidden");
   }
 
-  function onScanSuccess(decodedText) {
+  async function onScanSuccess(decodedText) {
     if (lookupBusy || !inventoryLoaded) return;
-
     const itemId = extractItemId(decodedText);
     const now = Date.now();
-
     if (itemId === lastScannedId && now - lastScannedAt < 3000) return;
-
     lastScannedId = itemId;
     lastScannedAt = now;
     lookupBusy = true;
-
     try {
       if (scannerMode === "restock") {
         $("restockItemId").value = itemId;
         showSuccess(`✅ Đã quét <b>${escapeHtml(itemId)}</b>. Kiểm tra rồi bấm "ĐƯA LẠI VÀO KHO".`, 3000);
-        stopScanner();
+        await stopScanner();
       } else {
-        addItemById(itemId);
+        await addItemById(itemId);
       }
     } catch (err) {
       console.error(err);
-      showError(`Lỗi khi xử lý QR: ${err?.message || err}`);
+      showError(`Lỗi khi xử lý QR: ${escapeHtml(err?.message || err)}`);
     } finally {
-      setTimeout(() => {
-        lookupBusy = false;
-      }, 400);
+      setTimeout(() => { lookupBusy = false; }, 400);
     }
   }
 
@@ -722,41 +648,60 @@
     return raw.toUpperCase();
   }
 
-  function manualLookup() {
+  async function manualLookup() {
+    if (lookupBusy) return;
     const value = $("manualId").value.trim();
-    if (!value) {
-      showError("Nhập ITEM ID.");
-      return;
+    if (!value) { showError("Nhập ITEM ID."); return; }
+    lookupBusy = true;
+    $("manualBtn").disabled = true;
+    try {
+      await addItemById(extractItemId(value));
+      $("manualId").value = "";
+    } finally {
+      lookupBusy = false;
+      $("manualBtn").disabled = !inventoryLoaded;
     }
-
-    addItemById(extractItemId(value));
-    $("manualId").value = "";
   }
 
-  function addItemById(itemId) {
-    if (!inventoryLoaded) {
-      showError("Inventory chưa tải xong.");
-      return;
-    }
-
-    const item = inventory.get(itemId);
-
-    if (!item) {
-      showError(`❌ Không tìm thấy ${itemId} hoặc item không còn IN_STOCK.`, 2500);
+  async function addItemById(itemId) {
+    if (!inventoryLoaded) { showError("Danh sách sản phẩm chưa tải xong."); return; }
+    if (checkoutRunning) { showError("Đang thanh toán, vui lòng đợi."); return; }
+    if (cart.some(x => x.itemId === itemId)) {
+      showError(`⚠️ ${escapeHtml(itemId)} đã có trong đơn hàng.`, 2500);
       errorFeedback();
       return;
     }
-
-    if (cart.some((x) => x.itemId === itemId)) {
-      showError(`⚠️ ${itemId} đã có trong đơn hàng.`, 2500);
+    try {
+      // Only one document read per item lookup; checkout verifies it again atomically.
+      const snap = await getDoc(doc(db, "items", itemId));
+      if (!snap.exists()) {
+        showError(`❌ Không tìm thấy ${escapeHtml(itemId)}.`, 2500);
+        errorFeedback();
+        return;
+      }
+      const data = snap.data();
+      const status = data.status ?? data.STATUS;
+      if (status !== "IN_STOCK") {
+        showError(`❌ ${escapeHtml(itemId)} không còn IN_STOCK (${escapeHtml(status || "UNKNOWN")}).`, 3000);
+        errorFeedback();
+        return;
+      }
+      const sku = normalizeSku(data.sku ?? data.SKU);
+      const product = products.get(sku);
+      if (!product) {
+        showError(`❌ Không tìm thấy product cho SKU ${escapeHtml(sku)}.`, 3500);
+        return;
+      }
+      if (cart.some(x => x.itemId === itemId)) return;
+      cart.push({ itemId, sku, productName: product.productName, price: product.price, status });
+      renderCart();
+      showSuccess(`✅ Đã add <b>${escapeHtml(itemId)}</b> vào đơn hàng`, 2000);
+      successFeedback();
+    } catch (err) {
+      console.error("Item lookup failed", err);
+      showError(`❌ Không đọc được ${escapeHtml(itemId)}: ${escapeHtml(err?.message || err)}`, 4500);
       errorFeedback();
-      return;
     }
-
-    cart.push({ ...item });
-    renderCart();
-    showSuccess(`✅ Đã add <b>${escapeHtml(itemId)}</b> vào đơn hàng`, 2000);
-    successFeedback();
   }
 
   function removeItem(itemId) {
@@ -935,12 +880,6 @@
           totalItems: orderItems.length
         };
       });
-
-      // Realtime listener will also remove these items from inventory.
-      for (const item of cartSnapshot) {
-        inventory.delete(item.itemId);
-        rawItems.delete(item.itemId);
-      }
 
       cart = [];
       renderCart();
